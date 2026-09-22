@@ -1,0 +1,2 @@
+-- O seed funcional será executado pelos testes com usuários sintéticos criados
+-- no ambiente local. Nunca copie identidades ou dados de produção para este arquivo.
