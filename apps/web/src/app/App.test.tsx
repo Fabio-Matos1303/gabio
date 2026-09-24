@@ -77,6 +77,27 @@ function gatewayWith(
     inviteMember: vi.fn().mockResolvedValue(undefined),
     updateProfile: vi.fn().mockResolvedValue(undefined),
     listTasks: vi.fn().mockResolvedValue([]),
+    loadFinance: vi.fn().mockResolvedValue({
+      accounts: [],
+      categories: [],
+      transactions: [],
+      budgets: [],
+      recurrences: [],
+    }),
+    prepareFinanceCommand: vi.fn().mockImplementation(async (command) => ({
+      commandId: command.commandId,
+      proposalId: "50000000-0000-4000-8000-000000000001",
+      commandHash: "a".repeat(64),
+      summary: "Operação de teste",
+      review: { operation: command.type },
+      expiresAt: "2026-09-24T13:00:00.000Z",
+    })),
+    confirmFinanceCommand: vi.fn().mockImplementation(async (confirmation) => ({
+      commandId: confirmation.commandId,
+      commandHash: confirmation.confirmationHash,
+      replayed: false,
+      affectedIds: ["60000000-0000-4000-8000-000000000001"],
+    })),
     executeTaskCommand: vi.fn().mockImplementation(async (command) => ({
       commandId: command.commandId,
       replayed: false,
@@ -155,17 +176,80 @@ describe("App", () => {
     );
   });
 
-  it("enables quick tasks while keeping finance and calendar disabled", async () => {
+  it("enables quick tasks and finance while keeping calendar disabled", async () => {
     render(<App gateway={gatewayWith()} />);
     expect(
       (await screen.findAllByRole("button", { name: /Nova tarefa/ }))[0],
     ).toBeEnabled();
     expect(
       screen.getByRole("button", { name: /Novo lançamento/ }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(
       screen.getByRole("button", { name: /Novo compromisso/ }),
     ).toBeDisabled();
+  });
+
+  it("prepares and confirms a financial transaction", async () => {
+    const gateway = gatewayWith();
+    gateway.loadFinance = vi.fn().mockResolvedValue({
+      accounts: [
+        {
+          id: "50000000-0000-4000-8000-000000000010",
+          name: "Conta casa",
+          accountType: "checking",
+          currencyCode: "BRL",
+          visibility: "household",
+          version: 1,
+        },
+      ],
+      categories: [
+        {
+          id: "50000000-0000-4000-8000-000000000011",
+          name: "Mercado",
+          kind: "expense",
+          visibility: "household",
+          version: 1,
+        },
+      ],
+      transactions: [],
+      budgets: [],
+      recurrences: [],
+    });
+    render(<App gateway={gateway} />);
+    fireEvent.change(await screen.findByLabelText("Conta"), {
+      target: { value: "50000000-0000-4000-8000-000000000010" },
+    });
+    fireEvent.change(screen.getByLabelText("Categoria"), {
+      target: { value: "50000000-0000-4000-8000-000000000011" },
+    });
+    fireEvent.change(screen.getByLabelText(/Valor/), {
+      target: { value: "12.34" },
+    });
+    fireEvent.change(screen.getByLabelText("Descrição"), {
+      target: { value: "Compra sintética" },
+    });
+    fireEvent.change(screen.getByLabelText("Data"), {
+      target: { value: "2026-09-24" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Revisar operação" }));
+    await waitFor(() =>
+      expect(gateway.prepareFinanceCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "create_transaction",
+          payload: expect.objectContaining({ amountMinor: 1234 }),
+        }),
+      ),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Confirmar operação" }),
+    );
+    await waitFor(() =>
+      expect(gateway.confirmFinanceCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          proposalId: "50000000-0000-4000-8000-000000000001",
+        }),
+      ),
+    );
   });
 
   it("never combines a new session with the previous household", async () => {

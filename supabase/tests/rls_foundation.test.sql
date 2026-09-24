@@ -20,10 +20,10 @@ values
   ('20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'owner'),
   ('20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'member');
 
-insert into public.financial_accounts (id, household_id, owner_user_id, visibility, name, account_type)
+insert into public.financial_accounts (id, household_id, owner_user_id, created_by, visibility, name, account_type)
 values
-  ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', null, 'household', 'Compartilhada', 'checking'),
-  ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'private', 'Privada B', 'checking');
+  ('30000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', null, '10000000-0000-4000-8000-000000000001', 'household', 'Compartilhada', 'checking'),
+  ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001', 'private', 'Privada B', 'checking');
 
 insert into public.transactions (
   id, household_id, account_id, created_by, direction, amount_minor,
@@ -37,15 +37,13 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select is((select count(*) from public.financial_accounts)::bigint, 1::bigint, 'A sees only the shared account');
 select is((select count(*) from public.transactions)::bigint, 1::bigint, 'A cannot read a private transaction merely because A created it');
-select results_eq(
-  $$delete from public.financial_accounts where id = '30000000-0000-4000-8000-000000000001' returning id$$,
-  array[]::uuid[],
-  'clients cannot delete financial accounts'
+select throws_ok(
+  'delete from public.financial_accounts where id = ''30000000-0000-4000-8000-000000000001''',
+  '42501', null, 'clients cannot delete financial accounts'
 );
-select results_eq(
-  $$update public.financial_accounts set visibility = 'private', owner_user_id = '10000000-0000-4000-8000-000000000001' where id = '30000000-0000-4000-8000-000000000001' returning id$$,
-  array[]::uuid[],
-  'clients cannot appropriate shared accounts'
+select throws_ok(
+  'update public.financial_accounts set visibility = ''private'', owner_user_id = ''10000000-0000-4000-8000-000000000001'' where id = ''30000000-0000-4000-8000-000000000001''',
+  '42501', null, 'clients cannot appropriate shared accounts'
 );
 select throws_ok(
   $$insert into public.transactions (household_id, account_id, created_by, direction, amount_minor, description, occurred_on, idempotency_key) values ('20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'expense', 1, 'Direta', current_date, gen_random_uuid())$$,

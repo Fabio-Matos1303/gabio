@@ -39,6 +39,8 @@ Cada marco entrega uma capacidade utilizável da interface até o banco, incluin
 
 **Resultado:** contas e lançamentos privados ou compartilhados com confirmação e histórico confiável.
 
+**Status:** concluído em 2026-09-24.
+
 - Contas, categorias, receitas, despesas, recorrência, orçamento e parcelamento.
 - Ledger sem exclusão destrutiva; correções por ajuste ou estorno.
 - Confirmação vinculada ao hash do comando.

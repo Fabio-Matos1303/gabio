@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   canEditResource,
+  allocateInstallments,
+  confirmationMatchesCommand,
+  nextFinanceRecurrenceDate,
+  signedAmountMinor,
   canReadResource,
   findConflicts,
   nextRecurrenceDueAt,
@@ -174,5 +178,54 @@ describe("findConflicts", () => {
         existing,
       ).map((item) => item.id),
     ).toEqual(["overlap"]);
+  });
+});
+
+describe("finance domain", () => {
+  it("allocates every minor unit deterministically", () => {
+    expect(allocateInstallments(10001, 3)).toEqual([3334, 3334, 3333]);
+    expect(
+      allocateInstallments(10001, 3).reduce((sum, value) => sum + value, 0),
+    ).toBe(10001);
+  });
+  it("clamps monthly and yearly recurrences", () => {
+    expect(
+      nextFinanceRecurrenceDate(
+        new Date("2027-01-31T12:00:00Z"),
+        "monthly",
+      ).toISOString(),
+    ).toBe("2027-02-28T12:00:00.000Z");
+    expect(
+      nextFinanceRecurrenceDate(
+        new Date("2028-02-29T12:00:00Z"),
+        "yearly",
+      ).toISOString(),
+    ).toBe("2029-02-28T12:00:00.000Z");
+  });
+  it("requires confirmation hash, command id and validity window", () => {
+    const expected = { commandId: "command-a", commandHash: "hash-a" };
+    expect(
+      confirmationMatchesCommand(
+        { ...expected, expiresAt: new Date("2026-09-24T13:00:00Z") },
+        expected,
+        new Date("2026-09-24T12:00:00Z"),
+      ),
+    ).toBe(true);
+    expect(
+      confirmationMatchesCommand(
+        {
+          ...expected,
+          commandHash: "hash-b",
+          expiresAt: new Date("2026-09-24T13:00:00Z"),
+        },
+        expected,
+        new Date("2026-09-24T12:00:00Z"),
+      ),
+    ).toBe(false);
+  });
+  it("signs income and expense without floating point", () => {
+    expect(signedAmountMinor("income", 1250)).toBe(1250);
+    expect(signedAmountMinor("expense", 1250)).toBe(-1250);
+    expect(() => signedAmountMinor("expense", 12.5)).toThrow();
   });
 });

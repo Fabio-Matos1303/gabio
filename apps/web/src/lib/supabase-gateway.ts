@@ -1,8 +1,14 @@
 import {
+  financeCommandConfirmationSchema,
+  financeCommandProposalSchema,
+  financeCommandReceiptSchema,
+  financeGatewayCommandSchema,
   taskCommandReceiptSchema,
   taskGatewayCommandSchema,
   taskSchema,
   type TaskGatewayCommand,
+  type FinanceGatewayCommand,
+  type FinanceCommandConfirmation,
 } from "@gabio/contracts";
 import {
   createClient,
@@ -15,6 +21,7 @@ import {
   GatewayError,
   type AppGateway,
   type AuthEvent,
+  type FinanceSnapshot,
   type HouseholdContext,
   type SessionUser,
 } from "./app-gateway.js";
@@ -81,6 +88,65 @@ const taskRowSchema = z
   })
   .strict();
 
+const financeAccountRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    account_type: z.string(),
+    currency_code: z.literal("BRL"),
+    visibility: z.enum(["household", "private"]),
+    version: z.number().int().positive(),
+  })
+  .strict();
+const financeCategoryRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    kind: z.enum(["income", "expense", "both"]),
+    visibility: z.enum(["household", "private"]),
+    version: z.number().int().positive(),
+  })
+  .strict();
+const financeTransactionRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    account_id: z.string().uuid(),
+    category_id: z.string().uuid().nullable(),
+    direction: z.enum(["income", "expense"]),
+    amount_minor: z.union([z.string().regex(/^\d+$/), z.number().int().safe()]),
+    currency_code: z.literal("BRL"),
+    description: z.string(),
+    occurred_on: z.string().date(),
+    visibility: z.enum(["household", "private"]),
+    status: z.enum(["posted", "reversed"]),
+    reversal_of_id: z.string().uuid().nullable(),
+  })
+  .strict();
+const financeBudgetRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    category_id: z.string().uuid(),
+    month: z.string().date(),
+    amount_minor: z.union([z.string().regex(/^\d+$/), z.number().int().safe()]),
+    visibility: z.enum(["household", "private"]),
+    version: z.number().int().positive(),
+  })
+  .strict();
+const financeRecurrenceRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    account_id: z.string().uuid(),
+    category_id: z.string().uuid().nullable(),
+    direction: z.enum(["income", "expense"]),
+    amount_minor: z.union([z.string().regex(/^\d+$/), z.number().int().safe()]),
+    description: z.string(),
+    frequency: z.enum(["weekly", "monthly", "yearly"]),
+    next_due_on: z.string().date(),
+    visibility: z.enum(["household", "private"]),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
 function parseTaskRow(value: unknown) {
   const row = taskRowSchema.parse(value);
   return taskSchema.parse({
@@ -117,6 +183,24 @@ export function toSessionUser(user: User): SessionUser | null {
 
 function friendlyError(): GatewayError {
   return new GatewayError();
+}
+
+async function loadVisibleTransactions(client: SupabaseClient) {
+  const data: unknown[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    const result = await client
+      .from("transactions")
+      .select(
+        "id, account_id, category_id, direction, amount_minor, currency_code, description, occurred_on, visibility, status, reversal_of_id",
+      )
+      .order("occurred_on", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (result.error) return { data: null, error: result.error };
+    data.push(...result.data);
+    if (result.data.length < pageSize) return { data, error: null };
+  }
 }
 
 export class SupabaseGateway implements AppGateway {
@@ -252,6 +336,157 @@ export class SupabaseGateway implements AppGateway {
     if (error) throw friendlyError();
     try {
       return z.array(taskRowSchema).parse(data).map(parseTaskRow);
+    } catch {
+      throw friendlyError();
+    }
+  }
+
+  async loadFinance(): Promise<FinanceSnapshot> {
+    const client = this.configuredClient();
+    const [
+      accountsResult,
+      categoriesResult,
+      transactionsResult,
+      budgetsResult,
+      recurrencesResult,
+    ] = await Promise.all([
+      client
+        .from("financial_accounts")
+        .select("id, name, account_type, currency_code, visibility, version")
+        .eq("is_archived", false)
+        .order("name"),
+      client
+        .from("finance_categories")
+        .select("id, name, kind, visibility, version")
+        .eq("is_archived", false)
+        .order("name"),
+      loadVisibleTransactions(client),
+      client
+        .from("finance_budgets")
+        .select("id, category_id, month, amount_minor, visibility, version")
+        .order("month", { ascending: false }),
+      client
+        .from("finance_recurrences")
+        .select(
+          "id, account_id, category_id, direction, amount_minor, description, frequency, next_due_on, visibility, version",
+        )
+        .eq("is_archived", false)
+        .order("next_due_on"),
+    ]);
+    if (
+      [
+        accountsResult,
+        categoriesResult,
+        transactionsResult,
+        budgetsResult,
+        recurrencesResult,
+      ].some((result) => result.error)
+    )
+      throw friendlyError();
+    try {
+      const accounts = z
+        .array(financeAccountRowSchema)
+        .parse(accountsResult.data)
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          accountType: row.account_type,
+          currencyCode: row.currency_code,
+          visibility: row.visibility,
+          version: row.version,
+        }));
+      const categories = z
+        .array(financeCategoryRowSchema)
+        .parse(categoriesResult.data)
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          kind: row.kind,
+          visibility: row.visibility,
+          version: row.version,
+        }));
+      const transactions = z
+        .array(financeTransactionRowSchema)
+        .parse(transactionsResult.data)
+        .map((row) => ({
+          id: row.id,
+          accountId: row.account_id,
+          categoryId: row.category_id,
+          direction: row.direction,
+          amountMinor: String(row.amount_minor),
+          currencyCode: row.currency_code,
+          description: row.description,
+          occurredOn: row.occurred_on,
+          visibility: row.visibility,
+          status: row.status,
+          reversalOfId: row.reversal_of_id,
+        }));
+      const budgets = z
+        .array(financeBudgetRowSchema)
+        .parse(budgetsResult.data)
+        .map((row) => ({
+          id: row.id,
+          categoryId: row.category_id,
+          month: row.month,
+          amountMinor: String(row.amount_minor),
+          visibility: row.visibility,
+          version: row.version,
+        }));
+      const recurrences = z
+        .array(financeRecurrenceRowSchema)
+        .parse(recurrencesResult.data)
+        .map((row) => ({
+          id: row.id,
+          accountId: row.account_id,
+          categoryId: row.category_id,
+          direction: row.direction,
+          amountMinor: String(row.amount_minor),
+          description: row.description,
+          frequency: row.frequency,
+          nextDueOn: row.next_due_on,
+          visibility: row.visibility,
+          version: row.version,
+        }));
+      return { accounts, categories, transactions, budgets, recurrences };
+    } catch {
+      throw friendlyError();
+    }
+  }
+
+  async prepareFinanceCommand(command: FinanceGatewayCommand) {
+    const parsed = financeGatewayCommandSchema.parse(command);
+    const { data, error } = await this.configuredClient().rpc(
+      "prepare_finance_command",
+      { command: parsed },
+    );
+    if (error) throw friendlyError();
+    try {
+      return financeCommandProposalSchema.parse(data);
+    } catch {
+      throw friendlyError();
+    }
+  }
+
+  async confirmFinanceCommand(confirmation: FinanceCommandConfirmation) {
+    const parsed = financeCommandConfirmationSchema.parse(confirmation);
+    const { data, error } = await this.configuredClient().rpc(
+      "confirm_finance_command",
+      {
+        command_id: parsed.commandId,
+        proposal_id: parsed.proposalId,
+        confirmation_hash: parsed.confirmationHash,
+      },
+    );
+    if (error) {
+      if (error.code === "40001")
+        throw new GatewayError(
+          "Os dados financeiros mudaram em outro dispositivo.",
+          "conflict",
+        );
+      throw friendlyError();
+    }
+    try {
+      return financeCommandReceiptSchema.parse(data);
     } catch {
       throw friendlyError();
     }

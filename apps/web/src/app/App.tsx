@@ -19,6 +19,7 @@ import type {
   SessionUser,
 } from "../lib/app-gateway.js";
 import { defaultGateway } from "../lib/supabase-gateway.js";
+import { FinancePanel } from "./FinancePanel.js";
 import {
   createTaskCommandQueue,
   syncTaskCommandQueue,
@@ -34,18 +35,21 @@ const actions = [
     title: "Nova tarefa",
     description: "Organize algo da rotina",
     enabled: true,
+    target: "#tarefas",
   },
   {
     icon: "R$",
     title: "Novo lançamento",
     description: "Registre uma movimentação",
-    enabled: false,
+    enabled: true,
+    target: "#financas",
   },
   {
     icon: "+",
     title: "Novo compromisso",
     description: "Verifique conflitos primeiro",
     enabled: false,
+    target: "#agenda",
   },
 ];
 
@@ -752,7 +756,7 @@ function Dashboard({
       hint: "M2: tarefas ponta a ponta",
     },
     {
-      id: "financas",
+      id: "financas-resumo",
       label: "Saldo do mês",
       value: "—",
       hint: "Privacidade por conta",
@@ -847,7 +851,7 @@ function Dashboard({
       <section aria-labelledby="resumo-title">
         <div className="section-heading">
           <h2 id="resumo-title">Hoje</h2>
-          <span className="status-pill">M1 conectado</span>
+          <span className="status-pill">M3 conectado</span>
         </div>
         <div className="summary-grid">
           {overview.map((item) => (
@@ -862,7 +866,7 @@ function Dashboard({
       <section aria-labelledby="acoes-title">
         <div className="section-heading">
           <h2 id="acoes-title">Ações rápidas</h2>
-          <span className="muted">Disponíveis no M2</span>
+          <span className="muted">Disponíveis no M3</span>
         </div>
         <div className="action-grid">
           {actions.map((action) => (
@@ -875,7 +879,7 @@ function Dashboard({
               onClick={() =>
                 action.enabled &&
                 document
-                  .querySelector("#tarefas")
+                  .querySelector(action.target)
                   ?.scrollIntoView({ behavior: "smooth" })
               }
             >
@@ -891,6 +895,7 @@ function Dashboard({
         </div>
       </section>
       <TaskPanel gateway={gateway} user={user} household={household} />
+      <FinancePanel gateway={gateway} />
       <section
         className="settings-grid"
         aria-label="Configuração da residência"

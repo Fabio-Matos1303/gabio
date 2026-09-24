@@ -1,8 +1,68 @@
 import type {
+  FinanceCommandConfirmation,
+  FinanceCommandProposal,
+  FinanceCommandReceipt,
+  FinanceGatewayCommand,
   Task,
   TaskCommandReceipt,
   TaskGatewayCommand,
 } from "@gabio/contracts";
+
+export type FinanceAccount = {
+  id: string;
+  name: string;
+  accountType: string;
+  currencyCode: "BRL";
+  visibility: "household" | "private";
+  version: number;
+};
+export type FinanceCategory = {
+  id: string;
+  name: string;
+  kind: "income" | "expense" | "both";
+  visibility: "household" | "private";
+  version: number;
+};
+export type FinanceTransaction = {
+  id: string;
+  accountId: string;
+  categoryId: string | null;
+  direction: "income" | "expense";
+  amountMinor: string;
+  currencyCode: "BRL";
+  description: string;
+  occurredOn: string;
+  visibility: "household" | "private";
+  status: "posted" | "reversed";
+  reversalOfId: string | null;
+};
+export type FinanceBudget = {
+  id: string;
+  categoryId: string;
+  month: string;
+  amountMinor: string;
+  visibility: "household" | "private";
+  version: number;
+};
+export type FinanceRecurrence = {
+  id: string;
+  accountId: string;
+  categoryId: string | null;
+  direction: "income" | "expense";
+  amountMinor: string;
+  description: string;
+  frequency: "weekly" | "monthly" | "yearly";
+  nextDueOn: string;
+  visibility: "household" | "private";
+  version: number;
+};
+export type FinanceSnapshot = {
+  accounts: FinanceAccount[];
+  categories: FinanceCategory[];
+  transactions: FinanceTransaction[];
+  budgets: FinanceBudget[];
+  recurrences: FinanceRecurrence[];
+};
 
 export type AuthEvent =
   | "INITIAL_SESSION"
@@ -51,6 +111,13 @@ export interface AppGateway {
   updateProfile(displayName: string, timezone: string): Promise<void>;
   listTasks(): Promise<Task[]>;
   executeTaskCommand(command: TaskGatewayCommand): Promise<TaskCommandReceipt>;
+  loadFinance(): Promise<FinanceSnapshot>;
+  prepareFinanceCommand(
+    command: FinanceGatewayCommand,
+  ): Promise<FinanceCommandProposal>;
+  confirmFinanceCommand(
+    confirmation: FinanceCommandConfirmation,
+  ): Promise<FinanceCommandReceipt>;
 }
 
 export class GatewayError extends Error {

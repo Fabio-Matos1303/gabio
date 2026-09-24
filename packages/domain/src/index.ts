@@ -151,3 +151,66 @@ export function findConflicts<T extends TimeInterval>(
 
   return existing.filter((item) => intervalsOverlap(proposed, item));
 }
+
+export function allocateInstallments(
+  totalAmountMinor: number,
+  installmentCount: number,
+): number[] {
+  if (!Number.isSafeInteger(totalAmountMinor) || totalAmountMinor <= 0)
+    throw new RangeError("totalAmountMinor must be a positive safe integer");
+  if (
+    !Number.isSafeInteger(installmentCount) ||
+    installmentCount < 2 ||
+    installmentCount > 360
+  )
+    throw new RangeError("installmentCount must be between 2 and 360");
+  const base = Math.floor(totalAmountMinor / installmentCount);
+  const remainder = totalAmountMinor % installmentCount;
+  return Array.from(
+    { length: installmentCount },
+    (_, index) => base + (index < remainder ? 1 : 0),
+  );
+}
+
+export function nextFinanceRecurrenceDate(
+  current: Date,
+  frequency: "weekly" | "monthly" | "yearly",
+): Date {
+  if (Number.isNaN(current.getTime()))
+    throw new RangeError("Invalid recurrence date");
+  const next = new Date(current);
+  if (frequency === "weekly") next.setUTCDate(next.getUTCDate() + 7);
+  else {
+    const day = next.getUTCDate();
+    const months = frequency === "monthly" ? 1 : 12;
+    next.setUTCDate(1);
+    next.setUTCMonth(next.getUTCMonth() + months);
+    const lastDay = new Date(
+      Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0),
+    ).getUTCDate();
+    next.setUTCDate(Math.min(day, lastDay));
+  }
+  return next;
+}
+
+export function confirmationMatchesCommand(
+  input: { commandId: string; commandHash: string; expiresAt: Date },
+  expected: { commandId: string; commandHash: string },
+  now: Date,
+): boolean {
+  return (
+    !Number.isNaN(now.getTime()) &&
+    input.expiresAt.getTime() >= now.getTime() &&
+    input.commandId === expected.commandId &&
+    input.commandHash === expected.commandHash
+  );
+}
+
+export function signedAmountMinor(
+  direction: "income" | "expense",
+  amountMinor: number,
+): number {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0)
+    throw new RangeError("amountMinor must be a positive safe integer");
+  return direction === "income" ? amountMinor : -amountMinor;
+}

@@ -259,3 +259,353 @@ export const authenticatedCommandEnvelopeSchema = z
 export type AuthenticatedCommandEnvelope = z.infer<
   typeof authenticatedCommandEnvelopeSchema
 >;
+
+export const financeDirectionSchema = z.enum(["income", "expense"]);
+export const financeAccountTypeSchema = z.enum([
+  "cash",
+  "checking",
+  "savings",
+  "credit_card",
+  "other",
+]);
+export const financeCategoryKindSchema = z.enum(["income", "expense", "both"]);
+export const financeRecurrenceFrequencySchema = z.enum([
+  "weekly",
+  "monthly",
+  "yearly",
+]);
+const brlMinorSchema = z.number().int().positive().safe();
+const financeTextSchema = z.string().trim().min(1).max(500);
+const financeVisibilitySchema = visibilitySchema;
+const financeVersionSchema = z.number().int().positive();
+
+export const financeGatewayCommandSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("create_account"),
+      payload: z
+        .object({
+          name: financeTextSchema.max(120),
+          accountType: financeAccountTypeSchema,
+          currencyCode: z.literal("BRL"),
+          visibility: financeVisibilitySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("update_account"),
+      payload: z
+        .object({
+          accountId: z.string().uuid(),
+          expectedVersion: financeVersionSchema,
+          name: financeTextSchema.max(120),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("archive_account"),
+      payload: z
+        .object({
+          accountId: z.string().uuid(),
+          expectedVersion: financeVersionSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("create_category"),
+      payload: z
+        .object({
+          name: financeTextSchema.max(120),
+          kind: financeCategoryKindSchema,
+          visibility: financeVisibilitySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("update_category"),
+      payload: z
+        .object({
+          categoryId: z.string().uuid(),
+          expectedVersion: financeVersionSchema,
+          name: financeTextSchema.max(120),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("archive_category"),
+      payload: z
+        .object({
+          categoryId: z.string().uuid(),
+          expectedVersion: financeVersionSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("create_transaction"),
+      payload: z
+        .object({
+          accountId: z.string().uuid(),
+          categoryId: z.string().uuid().nullable(),
+          direction: financeDirectionSchema,
+          amountMinor: brlMinorSchema,
+          currencyCode: z.literal("BRL"),
+          description: financeTextSchema,
+          occurredOn: z.string().date(),
+          visibility: financeVisibilitySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("reverse_transaction"),
+      payload: z
+        .object({ transactionId: z.string().uuid(), reason: financeTextSchema })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("set_budget"),
+      payload: z
+        .object({
+          categoryId: z.string().uuid(),
+          month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/),
+          amountMinor: brlMinorSchema,
+          currencyCode: z.literal("BRL"),
+          visibility: financeVisibilitySchema,
+          expectedVersion: financeVersionSchema.optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("create_recurrence"),
+      payload: z
+        .object({
+          accountId: z.string().uuid(),
+          categoryId: z.string().uuid().nullable(),
+          direction: financeDirectionSchema,
+          amountMinor: brlMinorSchema,
+          currencyCode: z.literal("BRL"),
+          description: financeTextSchema,
+          frequency: financeRecurrenceFrequencySchema,
+          nextDueOn: z.string().date(),
+          visibility: financeVisibilitySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("update_recurrence"),
+      payload: z
+        .object({
+          recurrenceId: z.string().uuid(),
+          expectedVersion: financeVersionSchema,
+          nextDueOn: z.string().date().optional(),
+          amountMinor: brlMinorSchema.optional(),
+        })
+        .strict()
+        .refine(
+          (value) =>
+            value.nextDueOn !== undefined || value.amountMinor !== undefined,
+          "at least one change is required",
+        ),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("archive_recurrence"),
+      payload: z
+        .object({
+          recurrenceId: z.string().uuid(),
+          expectedVersion: financeVersionSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      commandId: z.string().uuid(),
+      type: z.literal("create_installment_plan"),
+      payload: z
+        .object({
+          accountId: z.string().uuid(),
+          categoryId: z.string().uuid().nullable(),
+          description: financeTextSchema,
+          totalAmountMinor: brlMinorSchema,
+          installmentCount: z.number().int().min(2).max(360),
+          currencyCode: z.literal("BRL"),
+          firstDueOn: z.string().date(),
+          visibility: financeVisibilitySchema,
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+export type FinanceGatewayCommand = z.infer<typeof financeGatewayCommandSchema>;
+
+export const financeCommandReviewSchema = z
+  .object({
+    operation: z.string().trim().min(1).max(80),
+    description: z.string().trim().min(1).max(500).optional(),
+    accountName: z.string().trim().min(1).max(120).optional(),
+    categoryName: z.string().trim().min(1).max(120).optional(),
+    direction: z.enum(["income", "expense"]).optional(),
+    amountMinor: z.string().regex(/^\d+$/).optional(),
+    date: z.string().date().optional(),
+    visibility: financeVisibilitySchema.optional(),
+    installmentCount: z.string().regex(/^\d+$/).optional(),
+    targetId: z.string().uuid().optional(),
+    targetType: z
+      .enum(["account", "category", "recurrence", "transaction"])
+      .optional(),
+    targetName: z.string().trim().min(1).max(500).optional(),
+    originalAccountName: z.string().trim().min(1).max(120).optional(),
+    originalDirection: z.enum(["income", "expense"]).optional(),
+    originalAmountMinor: z.string().regex(/^\d+$/).optional(),
+    originalDate: z.string().date().optional(),
+  })
+  .strict();
+
+export const financeCommandProposalSchema = z
+  .object({
+    proposalId: z.string().uuid(),
+    commandId: z.string().uuid(),
+    commandHash: z.string().regex(/^[a-f0-9]{64}$/),
+    summary: z.string().trim().min(1).max(1000),
+    review: financeCommandReviewSchema,
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+export type FinanceCommandProposal = z.infer<
+  typeof financeCommandProposalSchema
+>;
+export const financeCommandConfirmationSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    proposalId: z.string().uuid(),
+    confirmationHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+export type FinanceCommandConfirmation = z.infer<
+  typeof financeCommandConfirmationSchema
+>;
+export const financeCommandReceiptSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    commandHash: z.string().regex(/^[a-f0-9]{64}$/),
+    replayed: z.boolean(),
+    affectedIds: z.array(z.string().uuid()).min(1).max(360),
+  })
+  .strict();
+export type FinanceCommandReceipt = z.infer<typeof financeCommandReceiptSchema>;
+
+const financeEntityBaseSchema = z
+  .object({
+    id: z.string().uuid(),
+    householdId: z.string().uuid(),
+    ownerUserId: z.string().uuid().nullable(),
+    createdBy: z.string().uuid(),
+    visibility: visibilitySchema,
+    version: z.number().int().positive(),
+    createdAt: z.string().datetime({ offset: true }),
+    updatedAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+export const financeAccountSchema = financeEntityBaseSchema
+  .extend({
+    name: financeTextSchema.max(120),
+    accountType: financeAccountTypeSchema,
+    currencyCode: z.literal("BRL"),
+    archivedAt: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+export const financeCategorySchema = financeEntityBaseSchema
+  .extend({
+    name: financeTextSchema.max(120),
+    kind: financeCategoryKindSchema,
+    archivedAt: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+export const financeTransactionSchema = financeEntityBaseSchema
+  .extend({
+    accountId: z.string().uuid(),
+    categoryId: z.string().uuid().nullable(),
+    direction: financeDirectionSchema,
+    amountMinor: brlMinorSchema,
+    currencyCode: z.literal("BRL"),
+    description: financeTextSchema,
+    occurredOn: z.string().date(),
+    reversedTransactionId: z.string().uuid().nullable(),
+    installmentPlanId: z.string().uuid().nullable(),
+    installmentNumber: z.number().int().positive().nullable(),
+    recurrenceId: z.string().uuid().nullable(),
+  })
+  .strict();
+export const financeBudgetSchema = financeEntityBaseSchema
+  .extend({
+    categoryId: z.string().uuid(),
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-01$/),
+    amountMinor: brlMinorSchema,
+    currencyCode: z.literal("BRL"),
+  })
+  .strict();
+export const financeRecurrenceSchema = financeEntityBaseSchema
+  .extend({
+    accountId: z.string().uuid(),
+    categoryId: z.string().uuid().nullable(),
+    direction: financeDirectionSchema,
+    amountMinor: brlMinorSchema,
+    currencyCode: z.literal("BRL"),
+    description: financeTextSchema,
+    frequency: financeRecurrenceFrequencySchema,
+    nextDueOn: z.string().date(),
+    archivedAt: z.string().datetime({ offset: true }).nullable(),
+  })
+  .strict();
+export const financeInstallmentPlanSchema = financeEntityBaseSchema
+  .extend({
+    accountId: z.string().uuid(),
+    categoryId: z.string().uuid().nullable(),
+    description: financeTextSchema,
+    totalAmountMinor: brlMinorSchema,
+    installmentCount: z.number().int().min(2).max(360),
+    currencyCode: z.literal("BRL"),
+    firstDueOn: z.string().date(),
+  })
+  .strict();
+export type FinanceAccount = z.infer<typeof financeAccountSchema>;
+export type FinanceCategory = z.infer<typeof financeCategorySchema>;
+export type FinanceTransaction = z.infer<typeof financeTransactionSchema>;
+export type FinanceBudget = z.infer<typeof financeBudgetSchema>;
+export type FinanceRecurrence = z.infer<typeof financeRecurrenceSchema>;
+export type FinanceInstallmentPlan = z.infer<
+  typeof financeInstallmentPlanSchema
+>;

@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   authenticatedCommandEnvelopeSchema,
+  financeCommandConfirmationSchema,
+  financeCommandProposalSchema,
+  financeGatewayCommandSchema,
   incomingCommandSchema,
   interpretationSchema,
   proposedCommandSchema,
@@ -179,6 +182,114 @@ describe("interpretationSchema", () => {
         confidence: 2,
         missingFields: [],
         clarificationQuestion: "Qual conta devo usar?",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("financeGatewayCommandSchema", () => {
+  const commandId = "00000000-0000-4000-8000-000000000030";
+  it("accepts BRL minor units and rejects decimal or foreign amounts", () => {
+    const valid = {
+      commandId,
+      type: "create_transaction",
+      payload: {
+        accountId: "00000000-0000-4000-8000-000000000031",
+        categoryId: null,
+        direction: "expense",
+        amountMinor: 1099,
+        currencyCode: "BRL",
+        description: "Compra de teste",
+        occurredOn: "2026-09-24",
+        visibility: "private",
+      },
+    };
+    expect(financeGatewayCommandSchema.parse(valid).type).toBe(
+      "create_transaction",
+    );
+    expect(() =>
+      financeGatewayCommandSchema.parse({
+        ...valid,
+        payload: { ...valid.payload, amountMinor: 10.99 },
+      }),
+    ).toThrow();
+    expect(() =>
+      financeGatewayCommandSchema.parse({
+        ...valid,
+        payload: { ...valid.payload, currencyCode: "USD" },
+      }),
+    ).toThrow();
+  });
+  it("rejects unknown fields and invalid recurrence updates", () => {
+    expect(() =>
+      financeGatewayCommandSchema.parse({
+        commandId,
+        type: "reverse_transaction",
+        payload: {
+          transactionId: "00000000-0000-4000-8000-000000000032",
+          reason: "Correção",
+          deleteOriginal: true,
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      financeGatewayCommandSchema.parse({
+        commandId,
+        type: "update_recurrence",
+        payload: {
+          recurrenceId: "00000000-0000-4000-8000-000000000032",
+          expectedVersion: 1,
+        },
+      }),
+    ).toThrow();
+  });
+  it("models installments without a delete command", () => {
+    const result = financeGatewayCommandSchema.parse({
+      commandId,
+      type: "create_installment_plan",
+      payload: {
+        accountId: "00000000-0000-4000-8000-000000000031",
+        categoryId: null,
+        description: "Compra parcelada",
+        totalAmountMinor: 10001,
+        installmentCount: 3,
+        currencyCode: "BRL",
+        firstDueOn: "2026-10-01",
+        visibility: "household",
+      },
+    });
+    expect(result.type).toBe("create_installment_plan");
+    expect(
+      financeGatewayCommandSchema.options.some((option) =>
+        option.shape.type.value.includes("delete"),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("finance confirmation schemas", () => {
+  it("requires a strict hash-linked proposal and confirmation", () => {
+    const hash = "a".repeat(64);
+    expect(
+      financeCommandProposalSchema.parse({
+        proposalId: "00000000-0000-4000-8000-000000000033",
+        commandId: "00000000-0000-4000-8000-000000000030",
+        commandHash: hash,
+        summary: "Registrar despesa de teste",
+        review: {
+          operation: "create_transaction",
+          description: "Compra de teste",
+          amountMinor: "1234",
+          visibility: "household",
+        },
+        expiresAt: "2026-09-24T13:00:00Z",
+      }).commandHash,
+    ).toBe(hash);
+    expect(() =>
+      financeCommandConfirmationSchema.parse({
+        commandId: "00000000-0000-4000-8000-000000000030",
+        proposalId: "00000000-0000-4000-8000-000000000033",
+        confirmationHash: "invalid",
       }),
     ).toThrow();
   });

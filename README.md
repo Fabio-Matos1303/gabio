@@ -6,7 +6,7 @@ O projeto usa uma arquitetura híbrida: regras determinísticas primeiro, Gemini
 
 ## Estado
 
-Fundação, M1 e M2 concluídos. O M2 cobre tarefas ponta a ponta, Command Gateway, recorrência simplificada, fila offline e reconciliação.
+Fundação, M1, M2 e M3 concluídos. O M3 cobre finanças ponta a ponta com contas privadas ou compartilhadas, confirmação vinculada ao comando, ledger por estorno e exportação validada.
 
 ## Stack
 
@@ -46,3 +46,4 @@ Copie `.env.example` para `.env.local` e preencha apenas valores de desenvolvime
 - [Decisões arquiteturais](docs/architecture/decisions/)
 - [Configuração de autenticação do M1](docs/operations/m1-auth-setup.md)
 - [Operação de tarefas do M2](docs/operations/m2-tasks.md)
+- [Operação financeira do M3](docs/operations/m3-finance.md)
