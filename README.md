@@ -6,7 +6,7 @@ O projeto usa uma arquitetura híbrida: regras determinísticas primeiro, Gemini
 
 ## Estado
 
-Fundação em construção. O primeiro marco cobre monorepo, contratos, domínio, PWA mínima, banco local e políticas de segurança.
+Fundação concluída e M1 em desenvolvimento. O M1 cobre login fechado, sessão, onboarding da residência e convite seguro do segundo membro.
 
 ## Stack
 
@@ -40,6 +40,8 @@ Copie `.env.example` para `.env.local` e preencha apenas valores de desenvolvime
 ## Documentação
 
 - [Visão do produto](docs/product/vision.md)
+- [Roadmap de entregas](docs/product/delivery-roadmap.md)
 - [Arquitetura](docs/architecture/overview.md)
 - [Modelo de ameaças](docs/security/threat-model.md)
 - [Decisões arquiteturais](docs/architecture/decisions/)
+- [Configuração de autenticação do M1](docs/operations/m1-auth-setup.md)
