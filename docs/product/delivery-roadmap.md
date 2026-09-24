@@ -28,6 +28,8 @@ Cada marco entrega uma capacidade utilizável da interface até o banco, incluin
 
 **Resultado:** criar, atribuir e concluir tarefas pela PWA, inclusive após perda temporária de conexão.
 
+**Status:** concluído em 2026-09-24.
+
 - Command Gateway autenticado, idempotente e auditável.
 - CRUD de domínio por comandos, recorrência e visibilidade.
 - IndexedDB, fila offline e reconciliação.

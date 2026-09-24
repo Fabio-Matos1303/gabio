@@ -23,6 +23,26 @@ const household: HouseholdContext = {
   members: [{ userId: user.id, displayName: user.displayName, role: "owner" }],
 };
 
+function makeTask(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "40000000-0000-4000-8000-000000000001",
+    householdId: household.id,
+    ownerUserId: user.id,
+    createdBy: user.id,
+    assigneeUserId: null,
+    title: "Lavar roupa",
+    dueAt: null,
+    visibility: "household" as const,
+    recurrence: "none" as const,
+    status: "open" as const,
+    completedAt: null,
+    version: 1,
+    createdAt: "2026-09-23T12:00:00.000Z",
+    updatedAt: "2026-09-23T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -56,6 +76,12 @@ function gatewayWith(
     acceptInvitation: vi.fn().mockResolvedValue(undefined),
     inviteMember: vi.fn().mockResolvedValue(undefined),
     updateProfile: vi.fn().mockResolvedValue(undefined),
+    listTasks: vi.fn().mockResolvedValue([]),
+    executeTaskCommand: vi.fn().mockImplementation(async (command) => ({
+      commandId: command.commandId,
+      replayed: false,
+      task: makeTask(),
+    })),
   };
 }
 
@@ -129,11 +155,11 @@ describe("App", () => {
     );
   });
 
-  it("keeps future business actions explicitly disabled", async () => {
+  it("enables quick tasks while keeping finance and calendar disabled", async () => {
     render(<App gateway={gatewayWith()} />);
     expect(
-      await screen.findByRole("button", { name: /Nova tarefa/ }),
-    ).toBeDisabled();
+      (await screen.findAllByRole("button", { name: /Nova tarefa/ }))[0],
+    ).toBeEnabled();
     expect(
       screen.getByRole("button", { name: /Novo lançamento/ }),
     ).toBeDisabled();
@@ -214,6 +240,45 @@ describe("App", () => {
     );
     await waitFor(() =>
       expect(gateway.acceptInvitation).toHaveBeenCalledWith(invitationId),
+    );
+  });
+
+  it("creates a task from deterministic Portuguese text", async () => {
+    const gateway = gatewayWith();
+    render(<App gateway={gateway} />);
+    fireEvent.change(await screen.findByLabelText("Criar tarefa por texto"), {
+      target: { value: "criar tarefa lavar roupa para mim" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Criar" }));
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "create",
+          payload: expect.objectContaining({
+            title: "lavar roupa",
+            assigneeUserId: user.id,
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("sends status changes with the visible expected version", async () => {
+    const gateway = gatewayWith();
+    gateway.listTasks = vi.fn().mockResolvedValue([makeTask()]);
+    render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Concluir" }));
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "set_status",
+          payload: {
+            taskId: "40000000-0000-4000-8000-000000000001",
+            expectedVersion: 1,
+            status: "completed",
+          },
+        }),
+      ),
     );
   });
 

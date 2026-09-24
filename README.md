@@ -6,7 +6,7 @@ O projeto usa uma arquitetura híbrida: regras determinísticas primeiro, Gemini
 
 ## Estado
 
-Fundação concluída e M1 em desenvolvimento. O M1 cobre login fechado, sessão, onboarding da residência e convite seguro do segundo membro.
+Fundação, M1 e M2 concluídos. O M2 cobre tarefas ponta a ponta, Command Gateway, recorrência simplificada, fila offline e reconciliação.
 
 ## Stack
 
@@ -45,3 +45,4 @@ Copie `.env.example` para `.env.local` e preencha apenas valores de desenvolvime
 - [Modelo de ameaças](docs/security/threat-model.md)
 - [Decisões arquiteturais](docs/architecture/decisions/)
 - [Configuração de autenticação do M1](docs/operations/m1-auth-setup.md)
+- [Operação de tarefas do M2](docs/operations/m2-tasks.md)

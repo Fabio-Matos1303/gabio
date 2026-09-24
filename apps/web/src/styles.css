@@ -468,6 +468,99 @@ section + section {
   color: #718078;
 }
 
+.tasks-section {
+  scroll-margin-top: 24px;
+}
+.tasks-section .section-heading > div .eyebrow {
+  margin-bottom: 5px;
+}
+.queue-notice {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d5c4ad;
+  border-radius: 12px;
+  color: #71482f;
+  background: #f7e9d4;
+  font-size: 0.82rem;
+}
+.task-composer {
+  margin-bottom: 14px;
+  border: 1px solid #d8d6c9;
+  background: #fffdf7;
+}
+.task-form {
+  display: grid;
+  grid-template-columns: 2fr repeat(4, 1fr);
+  gap: 12px;
+  margin: 14px 0;
+  padding: 18px;
+  border: 1px solid #d8d6c9;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.5);
+}
+.task-form label {
+  display: grid;
+  gap: 6px;
+  color: #40564d;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+.task-form input,
+.task-form select {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #c9c8b8;
+  border-radius: 10px;
+  color: #18342a;
+  background: #fffdf7;
+}
+.task-form .primary-button {
+  grid-column: 1 / -1;
+}
+.task-list {
+  display: grid;
+  gap: 10px;
+}
+.task-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 17px 19px;
+  border: 1px solid #d8d6c9;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+}
+.task-item.completed,
+.task-item.cancelled {
+  opacity: 0.68;
+}
+.task-item p {
+  margin: 5px 0 0;
+  color: #718078;
+  font-size: 0.78rem;
+}
+.task-status {
+  color: #617169;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+.task-actions {
+  display: flex;
+  gap: 7px;
+}
+.task-actions button {
+  padding: 8px 10px;
+  border: 1px solid #c9c8b8;
+  border-radius: 9px;
+  color: #18342a;
+  background: #f8f5ec;
+  cursor: pointer;
+}
+
 @media (max-width: 760px) {
   .auth-shell {
     grid-template-columns: 1fr;
@@ -515,6 +608,20 @@ section + section {
   }
   .account-actions > span:first-child {
     display: none;
+  }
+  .queue-notice,
+  .task-item {
+    align-items: start;
+    grid-template-columns: 1fr;
+  }
+  .queue-notice {
+    flex-direction: column;
+  }
+  .task-form {
+    grid-template-columns: 1fr;
+  }
+  .task-actions button {
+    flex: 1;
   }
 }
 

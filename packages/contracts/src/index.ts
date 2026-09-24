@@ -3,6 +3,17 @@ import { z } from "zod";
 export const visibilitySchema = z.enum(["household", "private"]);
 export type Visibility = z.infer<typeof visibilitySchema>;
 
+export const taskRecurrenceSchema = z.enum([
+  "none",
+  "daily",
+  "weekly",
+  "monthly",
+]);
+export type TaskRecurrence = z.infer<typeof taskRecurrenceSchema>;
+
+export const taskStatusSchema = z.enum(["open", "completed", "cancelled"]);
+export type TaskStatus = z.infer<typeof taskStatusSchema>;
+
 export const commandSourceSchema = z.enum([
   "pwa",
   "telegram",
@@ -16,8 +27,137 @@ const taskPayloadSchema = z
     dueAt: z.string().datetime({ offset: true }).nullable().default(null),
     assigneeUserId: z.string().uuid().nullable().default(null),
     visibility: visibilitySchema.default("household"),
+    recurrence: taskRecurrenceSchema.default("none"),
   })
   .strict();
+
+const taskMutableFieldsSchema = z
+  .object({
+    title: z.string().trim().min(1).max(240),
+    dueAt: z.string().datetime({ offset: true }).nullable(),
+    assigneeUserId: z.string().uuid().nullable(),
+    visibility: visibilitySchema,
+    recurrence: taskRecurrenceSchema,
+  })
+  .strict();
+
+const taskCreatePayloadSchema = taskMutableFieldsSchema.superRefine(
+  (payload, context) => {
+    if (payload.recurrence !== "none" && payload.dueAt === null)
+      context.addIssue({
+        code: "custom",
+        message: "recurring tasks require dueAt",
+        path: ["dueAt"],
+      });
+  },
+);
+
+const taskUpdatePayloadSchema = taskMutableFieldsSchema
+  .partial()
+  .extend({
+    taskId: z.string().uuid(),
+    expectedVersion: z.number().int().positive(),
+  })
+  .strict()
+  .refine(
+    ({ taskId: _taskId, expectedVersion: _expectedVersion, ...changes }) =>
+      Object.keys(changes).length > 0,
+    { message: "at least one task field must be updated" },
+  );
+
+export const taskCreateCommandSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    type: z.literal("create"),
+    payload: taskCreatePayloadSchema,
+  })
+  .strict();
+export const taskUpdateCommandSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    type: z.literal("update"),
+    payload: taskUpdatePayloadSchema,
+  })
+  .strict();
+export const taskSetStatusCommandSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    type: z.literal("set_status"),
+    payload: z
+      .object({
+        taskId: z.string().uuid(),
+        expectedVersion: z.number().int().positive(),
+        status: taskStatusSchema,
+      })
+      .strict(),
+  })
+  .strict();
+export const taskGatewayCommandSchema = z.discriminatedUnion("type", [
+  taskCreateCommandSchema,
+  taskUpdateCommandSchema,
+  taskSetStatusCommandSchema,
+]);
+export type TaskGatewayCommand = z.infer<typeof taskGatewayCommandSchema>;
+
+export const taskSchema = z
+  .object({
+    id: z.string().uuid(),
+    householdId: z.string().uuid(),
+    ownerUserId: z.string().uuid().nullable(),
+    createdBy: z.string().uuid(),
+    assigneeUserId: z.string().uuid().nullable(),
+    title: z.string().trim().min(1).max(240),
+    dueAt: z.string().datetime({ offset: true }).nullable(),
+    visibility: visibilitySchema,
+    recurrence: taskRecurrenceSchema,
+    status: taskStatusSchema,
+    completedAt: z.string().datetime({ offset: true }).nullable(),
+    version: z.number().int().positive(),
+    createdAt: z.string().datetime({ offset: true }),
+    updatedAt: z.string().datetime({ offset: true }),
+  })
+  .strict()
+  .superRefine((task, context) => {
+    if (task.visibility === "private" && task.ownerUserId === null)
+      context.addIssue({
+        code: "custom",
+        message: "private tasks require an owner",
+        path: ["ownerUserId"],
+      });
+    if (
+      task.visibility === "private" &&
+      task.assigneeUserId !== null &&
+      task.assigneeUserId !== task.ownerUserId
+    )
+      context.addIssue({
+        code: "custom",
+        message: "private tasks cannot be assigned to another user",
+        path: ["assigneeUserId"],
+      });
+    if (task.recurrence !== "none" && task.dueAt === null)
+      context.addIssue({
+        code: "custom",
+        message: "recurring tasks require dueAt",
+        path: ["dueAt"],
+      });
+    if (task.status === "completed" && task.completedAt === null)
+      context.addIssue({
+        code: "custom",
+        message: "completed tasks require completedAt",
+        path: ["completedAt"],
+      });
+  });
+export type Task = z.infer<typeof taskSchema>;
+export const taskCommandReceiptSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    replayed: z.boolean(),
+    task: taskSchema,
+  })
+  .strict();
+export type TaskCommandReceipt = z.infer<typeof taskCommandReceiptSchema>;
+export const taskCommandResponseSchema = taskCommandReceiptSchema;
+export type TaskCommandResponse = TaskCommandReceipt;
 
 const transactionPayloadSchema = z
   .object({

@@ -1,4 +1,10 @@
 import {
+  taskCreateCommandSchema,
+  type Task,
+  type TaskGatewayCommand,
+} from "@gabio/contracts";
+import { parsePortugueseTaskCreate } from "@gabio/domain";
+import {
   type FormEvent,
   useCallback,
   useEffect,
@@ -13,21 +19,33 @@ import type {
   SessionUser,
 } from "../lib/app-gateway.js";
 import { defaultGateway } from "../lib/supabase-gateway.js";
+import {
+  createTaskCommandQueue,
+  syncTaskCommandQueue,
+  type QueuedTaskCommand,
+} from "../lib/task-queue.js";
 
 type AppProps = { gateway?: AppGateway };
 type Notice = { kind: "success" | "error"; text: string } | null;
 
 const actions = [
-  { icon: "✓", title: "Nova tarefa", description: "Organize algo da rotina" },
+  {
+    icon: "✓",
+    title: "Nova tarefa",
+    description: "Organize algo da rotina",
+    enabled: true,
+  },
   {
     icon: "R$",
     title: "Novo lançamento",
     description: "Registre uma movimentação",
+    enabled: false,
   },
   {
     icon: "+",
     title: "Novo compromisso",
     description: "Verifique conflitos primeiro",
+    enabled: false,
   },
 ];
 
@@ -360,6 +378,346 @@ function OnboardingPanel({
   );
 }
 
+function TaskPanel({
+  gateway,
+  user,
+  household,
+}: {
+  gateway: AppGateway;
+  user: SessionUser;
+  household: HouseholdContext;
+}) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [queued, setQueued] = useState<QueuedTaskCommand[]>([]);
+  const [notice, setNotice] = useState<Notice>(null);
+  const [showForm, setShowForm] = useState(false);
+  const queue = useMemo(createTaskCommandQueue, []);
+  const context = useMemo(
+    () => ({ userId: user.id, householdId: household.id }),
+    [user.id, household.id],
+  );
+  const contextKey = user.id + ":" + household.id;
+  const liveContextKey = useRef<string | null>(contextKey);
+  liveContextKey.current = contextKey;
+
+  useEffect(
+    () => () => {
+      liveContextKey.current = null;
+    },
+    [],
+  );
+
+  const refresh = useCallback(async () => {
+    const [nextTasks, nextQueued] = await Promise.all([
+      gateway.listTasks(),
+      queue.list(context),
+    ]);
+    setTasks(nextTasks);
+    setQueued(nextQueued);
+  }, [context, gateway, queue]);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        if (navigator.onLine)
+          await syncTaskCommandQueue(queue, gateway, context, () => active);
+        if (active) await refresh();
+      } catch {
+        if (active)
+          setNotice({
+            kind: "error",
+            text: "Não foi possível carregar as tarefas.",
+          });
+      }
+    };
+    const online = () => void load();
+    void load();
+    window.addEventListener("online", online);
+    return () => {
+      active = false;
+      window.removeEventListener("online", online);
+    };
+  }, [context, gateway, queue, refresh]);
+
+  async function run(command: TaskGatewayCommand) {
+    setNotice(null);
+    try {
+      // Persist before the first attempt so a lost response can be retried
+      // idempotently with the exact same commandId.
+      await queue.put(context, command);
+      setQueued(await queue.list(context));
+
+      if (!navigator.onLine) {
+        setNotice({
+          kind: "error",
+          text: "Sem conexão. Alteração pendente de sincronização.",
+        });
+        return false;
+      }
+
+      await syncTaskCommandQueue(
+        queue,
+        gateway,
+        context,
+        () => liveContextKey.current === contextKey,
+      );
+      const remaining = await queue.list(context);
+      setQueued(remaining);
+      const current = remaining.find(
+        (entry) => entry.command.commandId === command.commandId,
+      );
+      if (current) {
+        setNotice({
+          kind: "error",
+          text:
+            current.status === "conflict"
+              ? "A tarefa mudou em outro dispositivo. Revise antes de tentar novamente."
+              : "Alteração pendente; ainda não foi confirmada.",
+        });
+        return false;
+      }
+
+      await refresh();
+      setNotice({ kind: "success", text: "Tarefa atualizada." });
+      return true;
+    } catch {
+      setNotice({
+        kind: "error",
+        text: "Não foi possível guardar a alteração neste dispositivo.",
+      });
+      return false;
+    }
+  }
+
+  async function createTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const dueValue = String(data.get("dueAt") ?? "");
+    const assigneeUserId = String(data.get("assigneeUserId") || "") || null;
+    const visibility = String(data.get("visibility"));
+    const recurrence = String(data.get("recurrence"));
+    if (
+      visibility === "private" &&
+      assigneeUserId !== null &&
+      assigneeUserId !== user.id
+    ) {
+      setNotice({
+        kind: "error",
+        text: "Uma tarefa privada só pode ser atribuída a você.",
+      });
+      return;
+    }
+    if (recurrence !== "none" && !dueValue) {
+      setNotice({
+        kind: "error",
+        text: "Informe um prazo para criar uma tarefa recorrente.",
+      });
+      return;
+    }
+    const command = taskCreateCommandSchema.parse({
+      commandId: crypto.randomUUID(),
+      type: "create",
+      payload: {
+        title: String(data.get("title")),
+        dueAt: dueValue ? new Date(dueValue).toISOString() : null,
+        assigneeUserId,
+        visibility,
+        recurrence,
+      },
+    });
+    if (await run(command)) {
+      form.reset();
+      setShowForm(false);
+    }
+  }
+
+  async function createNatural(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const command = parsePortugueseTaskCreate(
+      String(new FormData(form).get("natural")),
+      {
+        commandId: crypto.randomUUID(),
+        referenceDate: new Date(),
+        actorUserId: user.id,
+      },
+    );
+    if (!command) {
+      setNotice({
+        kind: "error",
+        text: "Use, por exemplo: criar tarefa comprar pão amanhã.",
+      });
+      return;
+    }
+    if (await run(command)) form.reset();
+  }
+
+  return (
+    <section
+      id="tarefas"
+      aria-labelledby="tasks-title"
+      className="tasks-section"
+    >
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Rotina</p>
+          <h2 id="tasks-title">Tarefas</h2>
+        </div>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => setShowForm((value) => !value)}
+        >
+          Nova tarefa
+        </button>
+      </div>
+      <NoticeBox notice={notice} />
+      {queued.length > 0 && (
+        <div className="queue-notice" role="status">
+          <strong>{queued.length} alteração(ões) pendente(s)</strong>
+          <span>Serão sincronizadas somente nesta conta e residência.</span>
+        </div>
+      )}
+      <form className="composer task-composer" onSubmit={createNatural}>
+        <label className="sr-only" htmlFor="natural-task">
+          Criar tarefa por texto
+        </label>
+        <input
+          id="natural-task"
+          name="natural"
+          required
+          maxLength={300}
+          placeholder="Ex.: criar tarefa lavar roupa amanhã para mim"
+        />
+        <button>Criar</button>
+      </form>
+      {showForm && (
+        <form className="task-form" onSubmit={createTask}>
+          <label>
+            Título
+            <input name="title" required maxLength={240} />
+          </label>
+          <label>
+            Visibilidade
+            <select name="visibility" defaultValue="household">
+              <option value="household">Compartilhada</option>
+              <option value="private">Privada</option>
+            </select>
+          </label>
+          <label>
+            Responsável
+            <select name="assigneeUserId" defaultValue="">
+              <option value="">Sem responsável</option>
+              {household.members.map((member) => (
+                <option key={member.userId} value={member.userId}>
+                  {member.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Prazo
+            <input name="dueAt" type="datetime-local" />
+          </label>
+          <label>
+            Recorrência
+            <select name="recurrence" defaultValue="none">
+              <option value="none">Não repetir</option>
+              <option value="daily">Diária</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensal</option>
+            </select>
+          </label>
+          <button className="primary-button">Criar tarefa</button>
+        </form>
+      )}
+      <div className="task-list">
+        {tasks.length === 0 ? (
+          <p className="muted">Nenhuma tarefa visível.</p>
+        ) : (
+          tasks.map((task) => (
+            <article className={`task-item ${task.status}`} key={task.id}>
+              <div>
+                <strong>{task.title}</strong>
+                <p>
+                  {task.visibility === "private" ? "Privada" : "Compartilhada"}
+                  {task.dueAt
+                    ? ` · ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(task.dueAt))}`
+                    : ""}
+                </p>
+              </div>
+              <span className="task-status">
+                {task.status === "open"
+                  ? "Aberta"
+                  : task.status === "completed"
+                    ? "Concluída"
+                    : "Cancelada"}
+              </span>
+              <div className="task-actions">
+                {task.status === "open" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void run({
+                          commandId: crypto.randomUUID(),
+                          type: "set_status",
+                          payload: {
+                            taskId: task.id,
+                            expectedVersion: task.version,
+                            status: "completed",
+                          },
+                        })
+                      }
+                    >
+                      Concluir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void run({
+                          commandId: crypto.randomUUID(),
+                          type: "set_status",
+                          payload: {
+                            taskId: task.id,
+                            expectedVersion: task.version,
+                            status: "cancelled",
+                          },
+                        })
+                      }
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                ) : task.recurrence === "none" ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void run({
+                        commandId: crypto.randomUUID(),
+                        type: "set_status",
+                        payload: {
+                          taskId: task.id,
+                          expectedVersion: task.version,
+                          status: "open",
+                        },
+                      })
+                    }
+                  >
+                    Reabrir
+                  </button>
+                ) : null}
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
 function Dashboard({
   gateway,
   user,
@@ -388,7 +746,7 @@ function Dashboard({
   );
   const overview = [
     {
-      id: "tarefas",
+      id: "tarefas-resumo",
       label: "Tarefas abertas",
       value: "—",
       hint: "M2: tarefas ponta a ponta",
@@ -512,8 +870,14 @@ function Dashboard({
               className="action-card"
               type="button"
               key={action.title}
-              disabled
-              title="Disponível no M2"
+              disabled={!action.enabled}
+              title={action.enabled ? undefined : "Ainda não disponível"}
+              onClick={() =>
+                action.enabled &&
+                document
+                  .querySelector("#tarefas")
+                  ?.scrollIntoView({ behavior: "smooth" })
+              }
             >
               <span className="action-icon" aria-hidden="true">
                 {action.icon}
@@ -526,6 +890,7 @@ function Dashboard({
           ))}
         </div>
       </section>
+      <TaskPanel gateway={gateway} user={user} household={household} />
       <section
         className="settings-grid"
         aria-label="Configuração da residência"

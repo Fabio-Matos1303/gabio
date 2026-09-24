@@ -1,3 +1,9 @@
+import type {
+  Task,
+  TaskCommandReceipt,
+  TaskGatewayCommand,
+} from "@gabio/contracts";
+
 export type AuthEvent =
   | "INITIAL_SESSION"
   | "SIGNED_IN"
@@ -43,10 +49,15 @@ export interface AppGateway {
   acceptInvitation(invitationId: string): Promise<void>;
   inviteMember(householdId: string, email: string): Promise<void>;
   updateProfile(displayName: string, timezone: string): Promise<void>;
+  listTasks(): Promise<Task[]>;
+  executeTaskCommand(command: TaskGatewayCommand): Promise<TaskCommandReceipt>;
 }
 
 export class GatewayError extends Error {
-  constructor(message = "Não foi possível concluir a operação.") {
+  constructor(
+    message = "Não foi possível concluir a operação.",
+    readonly kind: "generic" | "conflict" = "generic",
+  ) {
     super(message);
     this.name = "GatewayError";
   }

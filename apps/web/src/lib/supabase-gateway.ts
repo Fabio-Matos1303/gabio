@@ -1,4 +1,10 @@
 import {
+  taskCommandReceiptSchema,
+  taskGatewayCommandSchema,
+  taskSchema,
+  type TaskGatewayCommand,
+} from "@gabio/contracts";
+import {
   createClient,
   type SupabaseClient,
   type User,
@@ -55,6 +61,45 @@ const authEventSchema = z.enum([
 const invitationDeliverySchema = z
   .object({ delivered: z.literal(true) })
   .strict();
+
+const taskRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    household_id: z.string().uuid(),
+    owner_user_id: z.string().uuid().nullable(),
+    created_by: z.string().uuid(),
+    assignee_user_id: z.string().uuid().nullable(),
+    title: z.string(),
+    due_at: z.string().nullable(),
+    visibility: z.enum(["household", "private"]),
+    recurrence: z.enum(["none", "daily", "weekly", "monthly"]),
+    status: z.enum(["open", "completed", "cancelled"]),
+    completed_at: z.string().nullable(),
+    version: z.number().int().positive(),
+    created_at: z.string(),
+    updated_at: z.string(),
+  })
+  .strict();
+
+function parseTaskRow(value: unknown) {
+  const row = taskRowSchema.parse(value);
+  return taskSchema.parse({
+    id: row.id,
+    householdId: row.household_id,
+    ownerUserId: row.owner_user_id,
+    createdBy: row.created_by,
+    assigneeUserId: row.assignee_user_id,
+    title: row.title,
+    dueAt: row.due_at,
+    visibility: row.visibility,
+    recurrence: row.recurrence,
+    status: row.status,
+    completedAt: row.completed_at,
+    version: row.version,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
+}
 
 export function toSessionUser(user: User): SessionUser | null {
   const displayName =
@@ -195,6 +240,45 @@ export class SupabaseGateway implements AppGateway {
       new_timezone: timezone,
     });
     if (error) throw friendlyError();
+  }
+
+  async listTasks() {
+    const { data, error } = await this.configuredClient()
+      .from("tasks")
+      .select(
+        "id, household_id, owner_user_id, created_by, assignee_user_id, title, due_at, visibility, recurrence, status, completed_at, version, created_at, updated_at",
+      )
+      .order("created_at", { ascending: false });
+    if (error) throw friendlyError();
+    try {
+      return z.array(taskRowSchema).parse(data).map(parseTaskRow);
+    } catch {
+      throw friendlyError();
+    }
+  }
+
+  async executeTaskCommand(command: TaskGatewayCommand) {
+    const parsed = taskGatewayCommandSchema.parse(command);
+    const { data, error } = await this.configuredClient().rpc(
+      "execute_task_command",
+      {
+        command_id: parsed.commandId,
+        command: { type: parsed.type, payload: parsed.payload },
+      },
+    );
+    if (error) {
+      if (error.code === "40001")
+        throw new GatewayError(
+          "A tarefa mudou em outro dispositivo.",
+          "conflict",
+        );
+      throw friendlyError();
+    }
+    try {
+      return taskCommandReceiptSchema.parse(data);
+    } catch {
+      throw friendlyError();
+    }
   }
 }
 

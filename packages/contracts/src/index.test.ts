@@ -5,6 +5,8 @@ import {
   incomingCommandSchema,
   interpretationSchema,
   proposedCommandSchema,
+  taskCommandReceiptSchema,
+  taskGatewayCommandSchema,
 } from "./index.js";
 
 describe("proposedCommandSchema", () => {
@@ -74,6 +76,98 @@ describe("proposedCommandSchema", () => {
         },
       }),
     ).toThrow(/confirmation/);
+  });
+});
+
+describe("taskGatewayCommandSchema", () => {
+  it("accepts a strict create command", () => {
+    expect(
+      taskGatewayCommandSchema.parse({
+        commandId: "00000000-0000-4000-8000-000000000010",
+        type: "create",
+        payload: {
+          title: "Regar as plantas",
+          dueAt: "2026-10-08T12:00:00-03:00",
+          assigneeUserId: null,
+          visibility: "household",
+          recurrence: "weekly",
+        },
+      }).type,
+    ).toBe("create");
+  });
+  it("requires a due date for recurring tasks", () => {
+    expect(() =>
+      taskGatewayCommandSchema.parse({
+        commandId: "00000000-0000-4000-8000-000000000015",
+        type: "create",
+        payload: {
+          title: "Regar as plantas",
+          dueAt: null,
+          assigneeUserId: null,
+          visibility: "household",
+          recurrence: "weekly",
+        },
+      }),
+    ).toThrow();
+  });
+  it("requires optimistic concurrency and actual changes for updates", () => {
+    expect(() =>
+      taskGatewayCommandSchema.parse({
+        commandId: "00000000-0000-4000-8000-000000000011",
+        type: "update",
+        payload: {
+          taskId: "00000000-0000-4000-8000-000000000012",
+          title: "Novo título",
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      taskGatewayCommandSchema.parse({
+        commandId: "00000000-0000-4000-8000-000000000011",
+        type: "update",
+        payload: {
+          taskId: "00000000-0000-4000-8000-000000000012",
+          expectedVersion: 1,
+        },
+      }),
+    ).toThrow(/at least one/);
+  });
+  it("rejects privileged fields", () => {
+    expect(() =>
+      taskGatewayCommandSchema.parse({
+        commandId: "00000000-0000-4000-8000-000000000011",
+        type: "set_status",
+        payload: {
+          taskId: "00000000-0000-4000-8000-000000000012",
+          expectedVersion: 1,
+          status: "completed",
+          actorUserId: "00000000-0000-4000-8000-000000000013",
+        },
+      }),
+    ).toThrow();
+  });
+  it("validates a versioned task receipt", () => {
+    const result = taskCommandReceiptSchema.parse({
+      commandId: "00000000-0000-4000-8000-000000000010",
+      replayed: false,
+      task: {
+        id: "00000000-0000-4000-8000-000000000012",
+        householdId: "00000000-0000-4000-8000-000000000014",
+        ownerUserId: null,
+        createdBy: "00000000-0000-4000-8000-000000000013",
+        assigneeUserId: null,
+        title: "Regar as plantas",
+        dueAt: "2026-10-08T12:00:00-03:00",
+        visibility: "household",
+        recurrence: "weekly",
+        status: "open",
+        completedAt: null,
+        version: 1,
+        createdAt: "2026-09-23T12:00:00-03:00",
+        updatedAt: "2026-09-23T12:00:00-03:00",
+      },
+    });
+    expect(result.task.version).toBe(1);
   });
 });
 
