@@ -1,0 +1,11 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select plan(4);
+select ok(not has_function_privilege('anon','public.execute_task_command(uuid,jsonb)','EXECUTE'),'anonymous role cannot execute task gateway');
+select ok(has_function_privilege('authenticated','public.execute_task_command(uuid,jsonb)','EXECUTE'),'authenticated role can execute task gateway');
+select ok(not exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid='public.execute_task_command(uuid,jsonb)'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE'),'PUBLIC cannot execute task gateway');
+set local role anon;
+select throws_ok($$select public.execute_task_command('97000000-0000-4000-8000-000000000001','{"type":"create","payload":{"title":"Tarefa sintética negada"}}')$$,'42501',null,'anonymous direct RPC execution is denied');
+reset role;
+select * from finish();
+rollback;

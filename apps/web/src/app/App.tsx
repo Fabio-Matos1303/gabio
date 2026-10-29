@@ -1,9 +1,9 @@
 import {
   taskCreateCommandSchema,
+  taskUpdateCommandSchema,
   type Task,
   type TaskGatewayCommand,
 } from "@gabio/contracts";
-import { parsePortugueseTaskCreate } from "@gabio/domain";
 import {
   type FormEvent,
   useCallback,
@@ -18,8 +18,17 @@ import type {
   HouseholdContext,
   SessionUser,
 } from "../lib/app-gateway.js";
+import {
+  readTaskSnapshot,
+  writeTaskSnapshot,
+  projectTaskCommands,
+  clearTaskSnapshots,
+} from "../lib/task-snapshot.js";
 import { defaultGateway } from "../lib/supabase-gateway.js";
 import { FinancePanel } from "./FinancePanel.js";
+import { HomeCalendar } from "./HomeCalendar.js";
+import { HomeInsights } from "./HomeInsights.js";
+import { TelegramSettings } from "./TelegramSettings.js";
 import {
   createTaskCommandQueue,
   syncTaskCommandQueue,
@@ -28,30 +37,16 @@ import {
 
 type AppProps = { gateway?: AppGateway };
 type Notice = { kind: "success" | "error"; text: string } | null;
+const isTaskMvp = () => import.meta.env.VITE_TASKS_MVP !== "false";
+type DashboardPage = "home" | "tasks" | "finance" | "settings";
 
-const actions = [
-  {
-    icon: "✓",
-    title: "Nova tarefa",
-    description: "Organize algo da rotina",
-    enabled: true,
-    target: "#tarefas",
-  },
-  {
-    icon: "R$",
-    title: "Novo lançamento",
-    description: "Registre uma movimentação",
-    enabled: true,
-    target: "#financas",
-  },
-  {
-    icon: "+",
-    title: "Novo compromisso",
-    description: "Verifique conflitos primeiro",
-    enabled: false,
-    target: "#agenda",
-  },
-];
+function dashboardPageFromHash(hash: string): DashboardPage {
+  const taskMvp = isTaskMvp();
+  if (hash === "#tarefas") return "tasks";
+  if (hash === "#financas" && !taskMvp) return "finance";
+  if (hash === "#configuracoes") return "settings";
+  return taskMvp ? "tasks" : "home";
+}
 
 function invitationIdFromUrl() {
   const value = new URL(window.location.href).searchParams.get("join");
@@ -394,7 +389,13 @@ function TaskPanel({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [queued, setQueued] = useState<QueuedTaskCommand[]>([]);
   const [notice, setNotice] = useState<Notice>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [savingTask, setSavingTask] = useState(false);
+  const [sendingTask, setSendingTask] = useState(false);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const commandInFlight = useRef(false);
   const queue = useMemo(createTaskCommandQueue, []);
   const context = useMemo(
     () => ({ userId: user.id, householdId: household.id }),
@@ -404,21 +405,52 @@ function TaskPanel({
   const liveContextKey = useRef<string | null>(contextKey);
   liveContextKey.current = contextKey;
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    liveContextKey.current = contextKey;
+    return () => {
       liveContextKey.current = null;
-    },
-    [],
-  );
+    };
+  }, [contextKey]);
 
+  const refreshGeneration = useRef(0);
   const refresh = useCallback(async () => {
-    const [nextTasks, nextQueued] = await Promise.all([
-      gateway.listTasks(),
-      queue.list(context),
-    ]);
-    setTasks(nextTasks);
-    setQueued(nextQueued);
-  }, [context, gateway, queue]);
+    const generation = ++refreshGeneration.current;
+    const isCurrent = () =>
+      liveContextKey.current === contextKey &&
+      generation === refreshGeneration.current;
+    setLoadingTasks(true);
+    let confirmed = false;
+    try {
+      let nextTasks = readTaskSnapshot(context);
+      if (navigator.onLine) {
+        try {
+          nextTasks = await gateway.listTasks();
+          if (!isCurrent()) return false;
+          writeTaskSnapshot(context, nextTasks);
+          setLastUpdated(new Date().toISOString());
+          confirmed = true;
+        } catch {
+          if (!isCurrent()) return false;
+          setNotice({
+            kind: "error",
+            text: "Não foi possível atualizar. A lista exibida pode estar desatualizada. Tente Atualizar tarefas.",
+          });
+        }
+      } else if (isCurrent()) {
+        setNotice({
+          kind: "error",
+          text: "Sem conexão. Conecte-se à internet para atualizar as tarefas.",
+        });
+      }
+      const nextQueued = await queue.list(context);
+      if (!isCurrent()) return false;
+      setTasks(nextTasks);
+      setQueued(nextQueued);
+      return confirmed;
+    } finally {
+      if (isCurrent()) setLoadingTasks(false);
+    }
+  }, [context, contextKey, gateway, queue]);
 
   useEffect(() => {
     let active = true;
@@ -435,16 +467,65 @@ function TaskPanel({
           });
       }
     };
-    const online = () => void load();
+    const online = () => {
+      if (!commandInFlight.current) void load();
+    };
+    const visible = () => {
+      if (
+        document.visibilityState === "visible" &&
+        navigator.onLine &&
+        !commandInFlight.current
+      )
+        void refresh().catch(() => {
+          if (active)
+            setNotice({
+              kind: "error",
+              text: "Não foi possível atualizar as tarefas.",
+            });
+        });
+    };
+    const timer = window.setInterval(visible, 30_000);
+    document.addEventListener("visibilitychange", visible);
     void load();
     window.addEventListener("online", online);
     return () => {
       active = false;
       window.removeEventListener("online", online);
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", visible);
     };
   }, [context, gateway, queue, refresh]);
 
+  async function updateTasks() {
+    if (commandInFlight.current) return;
+    commandInFlight.current = true;
+    setSendingTask(true);
+    setNotice(null);
+    try {
+      if (navigator.onLine)
+        await syncTaskCommandQueue(
+          queue,
+          gateway,
+          context,
+          () => liveContextKey.current === contextKey,
+        );
+      if (liveContextKey.current === contextKey) await refresh();
+    } catch {
+      if (liveContextKey.current === contextKey)
+        setNotice({
+          kind: "error",
+          text: "Não foi possível atualizar as tarefas.",
+        });
+    } finally {
+      commandInFlight.current = false;
+      if (liveContextKey.current === contextKey) setSendingTask(false);
+    }
+  }
+
   async function run(command: TaskGatewayCommand) {
+    if (commandInFlight.current) return false;
+    commandInFlight.current = true;
+    setSendingTask(true);
     setNotice(null);
     try {
       // Persist before the first attempt so a lost response can be retried
@@ -455,9 +536,9 @@ function TaskPanel({
       if (!navigator.onLine) {
         setNotice({
           kind: "error",
-          text: "Sem conexão. Alteração pendente de sincronização.",
+          text: "Salvo neste dispositivo. Será enviado quando a conexão voltar.",
         });
-        return false;
+        return true;
       }
 
       await syncTaskCommandQueue(
@@ -467,23 +548,32 @@ function TaskPanel({
         () => liveContextKey.current === contextKey,
       );
       const remaining = await queue.list(context);
+      if (liveContextKey.current !== contextKey) return false;
       setQueued(remaining);
       const current = remaining.find(
         (entry) => entry.command.commandId === command.commandId,
       );
       if (current) {
+        if (current.status === "conflict") await refresh();
+        if (liveContextKey.current !== contextKey) return false;
         setNotice({
           kind: "error",
           text:
             current.status === "conflict"
-              ? "A tarefa mudou em outro dispositivo. Revise antes de tentar novamente."
-              : "Alteração pendente; ainda não foi confirmada.",
+              ? "A tarefa mudou em outro dispositivo. Descarte a tentativa, cancele a edição e abra a tarefa novamente."
+              : "Salvo neste dispositivo. Aguardando sincronização.",
         });
-        return false;
+        return current.status === "pending";
       }
 
-      await refresh();
-      setNotice({ kind: "success", text: "Tarefa atualizada." });
+      const refreshed = await refresh();
+      if (liveContextKey.current !== contextKey) return false;
+      setNotice({
+        kind: refreshed ? "success" : "error",
+        text: refreshed
+          ? "Tarefa atualizada."
+          : "Alteração confirmada. Não foi possível atualizar a lista; toque em Atualizar tarefas.",
+      });
       return true;
     } catch {
       setNotice({
@@ -491,6 +581,9 @@ function TaskPanel({
         text: "Não foi possível guardar a alteração neste dispositivo.",
       });
       return false;
+    } finally {
+      commandInFlight.current = false;
+      if (liveContextKey.current === contextKey) setSendingTask(false);
     }
   }
 
@@ -499,6 +592,10 @@ function TaskPanel({
     const form = event.currentTarget;
     const data = new FormData(form);
     const dueValue = String(data.get("dueAt") ?? "");
+    if (dueValue && Number.isNaN(new Date(dueValue).getTime())) {
+      setNotice({ kind: "error", text: "Informe um prazo válido." });
+      return;
+    }
     const assigneeUserId = String(data.get("assigneeUserId") || "") || null;
     const visibility = String(data.get("visibility"));
     const recurrence = String(data.get("recurrence"));
@@ -520,7 +617,7 @@ function TaskPanel({
       });
       return;
     }
-    const command = taskCreateCommandSchema.parse({
+    const parsed = taskCreateCommandSchema.safeParse({
       commandId: crypto.randomUUID(),
       type: "create",
       payload: {
@@ -531,32 +628,110 @@ function TaskPanel({
         recurrence,
       },
     });
-    if (await run(command)) {
-      form.reset();
-      setShowForm(false);
-    }
-  }
-
-  async function createNatural(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const command = parsePortugueseTaskCreate(
-      String(new FormData(form).get("natural")),
-      {
-        commandId: crypto.randomUUID(),
-        referenceDate: new Date(),
-        actorUserId: user.id,
-      },
-    );
-    if (!command) {
+    if (!parsed.success) {
       setNotice({
         kind: "error",
-        text: "Use, por exemplo: criar tarefa comprar pão amanhã.",
+        text: "Revise o título e os detalhes da tarefa.",
       });
       return;
     }
-    if (await run(command)) form.reset();
+    if (await run(parsed.data)) {
+      form.reset();
+      setShowDetails(false);
+    }
   }
+
+  async function saveTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingTask || savingTask) return;
+    const form = new FormData(event.currentTarget);
+    const due = String(form.get("dueAt") ?? "");
+    const parsed = taskUpdateCommandSchema.safeParse({
+      commandId: crypto.randomUUID(),
+      type: "update",
+      payload: {
+        taskId: editingTask.id,
+        expectedVersion: editingTask.version,
+        title: String(form.get("title") ?? ""),
+        dueAt:
+          due && !Number.isNaN(new Date(due).getTime())
+            ? new Date(due).toISOString()
+            : null,
+        assigneeUserId: String(form.get("assigneeUserId") ?? "") || null,
+        recurrence: String(form.get("recurrence")),
+        visibility: String(form.get("visibility")),
+      },
+    });
+    if (
+      !parsed.success ||
+      (parsed.data.payload.recurrence !== "none" &&
+        !parsed.data.payload.dueAt) ||
+      (parsed.data.payload.visibility === "private" &&
+        parsed.data.payload.assigneeUserId &&
+        parsed.data.payload.assigneeUserId !== user.id)
+    ) {
+      setNotice({
+        kind: "error",
+        text: "Revise os detalhes: recorrências exigem prazo e tarefas privadas só podem ser atribuídas a você.",
+      });
+      return;
+    }
+    setSavingTask(true);
+    try {
+      if (await run(parsed.data)) setEditingTask(null);
+    } finally {
+      setSavingTask(false);
+    }
+  }
+
+  const displayedTasks = projectTaskCommands(tasks, queued, context);
+  const pendingIds = new Set(
+    queued
+      .filter((entry) => entry.status === "pending")
+      .map((entry) =>
+        entry.command.type === "create"
+          ? entry.command.commandId
+          : entry.command.payload.taskId,
+      ),
+  );
+  async function discardConflict(entry: QueuedTaskCommand) {
+    if (entry.status !== "conflict") return;
+    await queue.remove(context, entry.command.commandId);
+    await refresh();
+    setNotice({
+      kind: "success",
+      text: "Alteração em conflito descartada. Revise a tarefa atual antes de editar novamente.",
+    });
+  }
+  const columns: Array<{
+    status: Task["status"];
+    title: string;
+    description: string;
+  }> = [
+    {
+      status: "open",
+      title: "A fazer",
+      description: "O que ainda precisa de atenção",
+    },
+    {
+      status: "in_progress",
+      title: "Em andamento",
+      description: "O que está sendo feito agora",
+    },
+    {
+      status: "completed",
+      title: "Concluídas",
+      description: "O que a casa já resolveu",
+    },
+  ];
+  const recurrenceLabel = {
+    none: null,
+    daily: "Diária",
+    weekly: "Semanal",
+    monthly: "Mensal",
+  } as const;
+  const memberName = (userId: string | null) =>
+    household.members.find((member) => member.userId === userId)?.displayName;
 
   return (
     <section
@@ -568,51 +743,184 @@ function TaskPanel({
         <div>
           <p className="eyebrow">Rotina</p>
           <h2 id="tasks-title">Tarefas</h2>
+          <p className="section-description">
+            Capture rapidamente e acompanhe o andamento em um só quadro.
+          </p>
+          {lastUpdated && (
+            <small className="muted">
+              Última consulta:{" "}
+              {new Intl.DateTimeFormat("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(new Date(lastUpdated))}
+            </small>
+          )}
         </div>
         <button
-          className="secondary-button"
           type="button"
-          onClick={() => setShowForm((value) => !value)}
+          className="secondary-button"
+          disabled={loadingTasks || sendingTask}
+          onClick={() => void updateTasks()}
         >
-          Nova tarefa
+          Atualizar tarefas
         </button>
       </div>
+      {loadingTasks && <p role="status">Atualizando tarefas…</p>}
       <NoticeBox notice={notice} />
+      {editingTask && (
+        <section className="settings-card" aria-label="Editar tarefa">
+          <h3>Editar tarefa</h3>
+          <form
+            className="task-create-details task-editor"
+            onSubmit={saveTask}
+            key={editingTask.id}
+          >
+            <label>
+              Título
+              <input
+                disabled={sendingTask}
+                name="title"
+                defaultValue={editingTask.title}
+                required
+                maxLength={240}
+              />
+            </label>
+            <label>
+              Prazo
+              <input
+                disabled={sendingTask}
+                name="dueAt"
+                type="datetime-local"
+                defaultValue={
+                  editingTask.dueAt
+                    ? new Date(
+                        new Date(editingTask.dueAt).getTime() -
+                          new Date(editingTask.dueAt).getTimezoneOffset() *
+                            60000,
+                      )
+                        .toISOString()
+                        .slice(0, 16)
+                    : ""
+                }
+              />
+            </label>
+            <label>
+              Responsável
+              <select
+                disabled={sendingTask}
+                name="assigneeUserId"
+                defaultValue={editingTask.assigneeUserId ?? ""}
+              >
+                <option value="">Sem responsável</option>
+                {household.members.map((member) => (
+                  <option key={member.userId} value={member.userId}>
+                    {member.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Repetir
+              <select
+                disabled={sendingTask}
+                name="recurrence"
+                defaultValue={editingTask.recurrence}
+              >
+                <option value="none">Não repetir</option>
+                <option value="daily">Diariamente</option>
+                <option value="weekly">Semanalmente</option>
+                <option value="monthly">Mensalmente</option>
+              </select>
+            </label>
+            <label>
+              Quem pode ver
+              <select
+                disabled={sendingTask}
+                name="visibility"
+                defaultValue={editingTask.visibility}
+              >
+                <option value="household">Todos da casa</option>
+                <option
+                  value="private"
+                  disabled={editingTask.ownerUserId !== user.id}
+                >
+                  Somente eu
+                </option>
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              disabled={savingTask || sendingTask}
+            >
+              Salvar tarefa
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={savingTask}
+              onClick={() => setEditingTask(null)}
+            >
+              Cancelar edição
+            </button>
+          </form>
+        </section>
+      )}
       {queued.length > 0 && (
         <div className="queue-notice" role="status">
           <strong>{queued.length} alteração(ões) pendente(s)</strong>
           <span>Serão sincronizadas somente nesta conta e residência.</span>
         </div>
       )}
-      <form className="composer task-composer" onSubmit={createNatural}>
-        <label className="sr-only" htmlFor="natural-task">
-          Criar tarefa por texto
-        </label>
-        <input
-          id="natural-task"
-          name="natural"
-          required
-          maxLength={300}
-          placeholder="Ex.: criar tarefa lavar roupa amanhã para mim"
-        />
-        <button>Criar</button>
-      </form>
-      {showForm && (
-        <form className="task-form" onSubmit={createTask}>
+      {queued
+        .filter((entry) => entry.status === "conflict")
+        .map((entry) => (
+          <article className="queue-notice" key={entry.command.commandId}>
+            <span>
+              A tarefa mudou em outro dispositivo. Descarte esta tentativa e
+              revise os dados atuais.
+            </span>
+            <button type="button" onClick={() => void discardConflict(entry)}>
+              Descartar alteração em conflito
+            </button>
+          </article>
+        ))}
+      <form className="task-create" onSubmit={createTask}>
+        <div className="task-create-main">
           <label>
-            Título
-            <input name="title" required maxLength={240} />
+            <span className="sr-only">Título da tarefa</span>
+            <input
+              disabled={sendingTask}
+              name="title"
+              required
+              maxLength={240}
+              placeholder="O que precisa ser feito?"
+            />
           </label>
-          <label>
-            Visibilidade
-            <select name="visibility" defaultValue="household">
-              <option value="household">Compartilhada</option>
-              <option value="private">Privada</option>
-            </select>
-          </label>
+          <button
+            className="task-details-toggle"
+            type="button"
+            disabled={sendingTask}
+            aria-expanded={showDetails}
+            onClick={() => setShowDetails((value) => !value)}
+          >
+            {showDetails ? "Ocultar detalhes" : "Adicionar detalhes"}
+          </button>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={sendingTask}
+          >
+            {sendingTask ? "Enviando…" : "Adicionar tarefa"}
+          </button>
+        </div>
+        <div className="task-create-details" hidden={!showDetails}>
           <label>
             Responsável
-            <select name="assigneeUserId" defaultValue="">
+            <select
+              disabled={sendingTask}
+              name="assigneeUserId"
+              defaultValue=""
+            >
               <option value="">Sem responsável</option>
               {household.members.map((member) => (
                 <option key={member.userId} value={member.userId}>
@@ -623,100 +931,218 @@ function TaskPanel({
           </label>
           <label>
             Prazo
-            <input name="dueAt" type="datetime-local" />
+            <input disabled={sendingTask} name="dueAt" type="datetime-local" />
           </label>
           <label>
-            Recorrência
-            <select name="recurrence" defaultValue="none">
+            Repetir
+            <select
+              disabled={sendingTask}
+              name="recurrence"
+              defaultValue="none"
+            >
               <option value="none">Não repetir</option>
-              <option value="daily">Diária</option>
-              <option value="weekly">Semanal</option>
-              <option value="monthly">Mensal</option>
+              <option value="daily">Diariamente</option>
+              <option value="weekly">Semanalmente</option>
+              <option value="monthly">Mensalmente</option>
             </select>
           </label>
-          <button className="primary-button">Criar tarefa</button>
-        </form>
-      )}
-      <div className="task-list">
-        {tasks.length === 0 ? (
-          <p className="muted">Nenhuma tarefa visível.</p>
-        ) : (
-          tasks.map((task) => (
-            <article className={`task-item ${task.status}`} key={task.id}>
-              <div>
-                <strong>{task.title}</strong>
-                <p>
-                  {task.visibility === "private" ? "Privada" : "Compartilhada"}
-                  {task.dueAt
-                    ? ` · ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(task.dueAt))}`
-                    : ""}
-                </p>
+          <label>
+            Quem pode ver
+            <select
+              disabled={sendingTask}
+              name="visibility"
+              defaultValue="household"
+            >
+              <option value="household">Todos da casa</option>
+              <option value="private">Somente eu</option>
+            </select>
+          </label>
+        </div>
+      </form>
+      <div className="task-board" role="region" aria-label="Quadro de tarefas">
+        {columns.map((column) => {
+          const columnTasks = displayedTasks.filter(
+            (task) => task.status === column.status,
+          );
+          return (
+            <section
+              className={`task-column ${column.status}`}
+              aria-labelledby={`task-column-${column.status}`}
+              key={column.status}
+            >
+              <header className="task-column-header">
+                <div>
+                  <h3 id={`task-column-${column.status}`}>{column.title}</h3>
+                  <p>{column.description}</p>
+                </div>
+                <span aria-label={`${columnTasks.length} tarefa(s)`}>
+                  {columnTasks.length}
+                </span>
+              </header>
+              <div className="task-column-cards">
+                {columnTasks.length === 0 ? (
+                  <p className="task-column-empty">Nenhuma tarefa aqui.</p>
+                ) : (
+                  columnTasks.map((task) => {
+                    const assignee = memberName(task.assigneeUserId);
+                    const dueDate = task.dueAt ? new Date(task.dueAt) : null;
+                    const overdue =
+                      (task.status === "open" ||
+                        task.status === "in_progress") &&
+                      dueDate !== null &&
+                      dueDate.getTime() < Date.now();
+                    return (
+                      <article className="task-card" key={task.id}>
+                        <div className="task-card-heading">
+                          <strong>{task.title}</strong>
+                          <span
+                            className={`visibility-chip ${task.visibility}`}
+                          >
+                            {task.visibility === "private"
+                              ? "Somente eu"
+                              : "Da casa"}
+                          </span>
+                        </div>
+                        <div className="task-card-meta">
+                          {assignee && <span>{assignee}</span>}
+                          {dueDate && (
+                            <time
+                              className={overdue ? "overdue" : undefined}
+                              dateTime={task.dueAt ?? undefined}
+                            >
+                              {overdue ? "Atrasada · " : ""}
+                              {new Intl.DateTimeFormat("pt-BR", {
+                                day: "2-digit",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }).format(dueDate)}
+                            </time>
+                          )}
+                          {recurrenceLabel[task.recurrence] && (
+                            <span>{recurrenceLabel[task.recurrence]}</span>
+                          )}
+                        </div>
+                        {pendingIds.has(task.id) && (
+                          <p role="status">Aguardando sincronização</p>
+                        )}
+                        <fieldset
+                          className="task-actions"
+                          disabled={sendingTask || pendingIds.has(task.id)}
+                        >
+                          {(task.status === "open" ||
+                            task.status === "in_progress") && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingTask(task)}
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {task.status === "open" ? (
+                            <>
+                              <button
+                                className="start-task"
+                                type="button"
+                                onClick={() =>
+                                  void run({
+                                    commandId: crypto.randomUUID(),
+                                    type: "set_status",
+                                    payload: {
+                                      taskId: task.id,
+                                      expectedVersion: task.version,
+                                      status: "in_progress",
+                                    },
+                                  })
+                                }
+                              >
+                                Iniciar
+                              </button>
+                              <button
+                                type="button"
+                                className="complete-task"
+                                onClick={() =>
+                                  void run({
+                                    commandId: crypto.randomUUID(),
+                                    type: "set_status",
+                                    payload: {
+                                      taskId: task.id,
+                                      expectedVersion: task.version,
+                                      status: "completed",
+                                    },
+                                  })
+                                }
+                              >
+                                Concluir
+                              </button>
+                            </>
+                          ) : task.status === "in_progress" ? (
+                            <>
+                              <button
+                                className="complete-task"
+                                type="button"
+                                onClick={() =>
+                                  void run({
+                                    commandId: crypto.randomUUID(),
+                                    type: "set_status",
+                                    payload: {
+                                      taskId: task.id,
+                                      expectedVersion: task.version,
+                                      status: "completed",
+                                    },
+                                  })
+                                }
+                              >
+                                Concluir
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void run({
+                                    commandId: crypto.randomUUID(),
+                                    type: "set_status",
+                                    payload: {
+                                      taskId: task.id,
+                                      expectedVersion: task.version,
+                                      status: "open",
+                                    },
+                                  })
+                                }
+                              >
+                                Voltar
+                              </button>
+                            </>
+                          ) : task.recurrence === "none" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void run({
+                                  commandId: crypto.randomUUID(),
+                                  type: "set_status",
+                                  payload: {
+                                    taskId: task.id,
+                                    expectedVersion: task.version,
+                                    status: "open",
+                                  },
+                                })
+                              }
+                            >
+                              Reabrir
+                            </button>
+                          ) : (
+                            <span className="task-card-note">
+                              Próxima ocorrência criada
+                            </span>
+                          )}
+                        </fieldset>
+                      </article>
+                    );
+                  })
+                )}
               </div>
-              <span className="task-status">
-                {task.status === "open"
-                  ? "Aberta"
-                  : task.status === "completed"
-                    ? "Concluída"
-                    : "Cancelada"}
-              </span>
-              <div className="task-actions">
-                {task.status === "open" ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void run({
-                          commandId: crypto.randomUUID(),
-                          type: "set_status",
-                          payload: {
-                            taskId: task.id,
-                            expectedVersion: task.version,
-                            status: "completed",
-                          },
-                        })
-                      }
-                    >
-                      Concluir
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void run({
-                          commandId: crypto.randomUUID(),
-                          type: "set_status",
-                          payload: {
-                            taskId: task.id,
-                            expectedVersion: task.version,
-                            status: "cancelled",
-                          },
-                        })
-                      }
-                    >
-                      Cancelar
-                    </button>
-                  </>
-                ) : task.recurrence === "none" ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void run({
-                        commandId: crypto.randomUUID(),
-                        type: "set_status",
-                        payload: {
-                          taskId: task.id,
-                          expectedVersion: task.version,
-                          status: "open",
-                        },
-                      })
-                    }
-                  >
-                    Reabrir
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))
-        )}
+            </section>
+          );
+        })}
       </div>
     </section>
   );
@@ -735,6 +1161,10 @@ function Dashboard({
 }) {
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState<DashboardPage>(() =>
+    dashboardPageFromHash(window.location.hash),
+  );
+  const taskMvp = isTaskMvp();
   const currentDisplayName =
     household.members.find((member) => member.userId === user.id)
       ?.displayName ?? user.displayName;
@@ -748,26 +1178,14 @@ function Dashboard({
       }).format(new Date()),
     [],
   );
-  const overview = [
-    {
-      id: "tarefas-resumo",
-      label: "Tarefas abertas",
-      value: "—",
-      hint: "M2: tarefas ponta a ponta",
-    },
-    {
-      id: "financas-resumo",
-      label: "Saldo do mês",
-      value: "—",
-      hint: "Privacidade por conta",
-    },
-    {
-      id: "agenda",
-      label: "Próximo compromisso",
-      value: "—",
-      hint: "Google Agenda",
-    },
-  ];
+  useEffect(() => {
+    const updatePage = () => {
+      setPage(dashboardPageFromHash(window.location.hash));
+      window.scrollTo({ top: 0, behavior: "instant" });
+    };
+    window.addEventListener("hashchange", updatePage);
+    return () => window.removeEventListener("hashchange", updatePage);
+  }, []);
 
   async function invite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -823,134 +1241,130 @@ function Dashboard({
         </a>
         <div className="account-actions">
           <span>{household.name}</span>
-          <button className="profile-button" type="button" title={user.email}>
+          <button
+            className="profile-button"
+            type="button"
+            aria-label="Configurações"
+            title={`Configurações · ${user.email}`}
+            onClick={() => {
+              window.location.hash = "configuracoes";
+            }}
+          >
             {currentDisplayName.slice(0, 2).toUpperCase()}
           </button>
           <button
             className="text-button"
             type="button"
-            onClick={() => void gateway.signOut()}
+            onClick={() => {
+              clearTaskSnapshots();
+              void gateway.signOut();
+            }}
           >
             Sair
           </button>
         </div>
       </header>
-      <section className="hero" id="inicio">
-        <p className="eyebrow">{today}</p>
-        <h1>
-          A casa em ordem,
-          <br />
-          sem virar trabalho.
-        </h1>
-        <p className="hero-copy">
-          Tarefas, dinheiro e agenda em um só lugar — com privacidade para o que
-          é seu.
-        </p>
-      </section>
-      <NoticeBox notice={notice} />
-      <section aria-labelledby="resumo-title">
-        <div className="section-heading">
-          <h2 id="resumo-title">Hoje</h2>
-          <span className="status-pill">M3 conectado</span>
+      {page === "home" && (
+        <>
+          <section className="home-intro" id="inicio">
+            <div>
+              <p className="eyebrow">{today}</p>
+              <h1>Visão da casa</h1>
+            </div>
+            <p>Veja o que precisa acontecer e como o mês está organizado.</p>
+          </section>
+          <HomeInsights gateway={gateway} />
+          <HomeCalendar gateway={gateway} />
+        </>
+      )}
+      {page === "tasks" && (
+        <div className="module-page">
+          <TaskPanel gateway={gateway} user={user} household={household} />
         </div>
-        <div className="summary-grid">
-          {overview.map((item) => (
-            <article className="summary-card" id={item.id} key={item.label}>
-              <p>{item.label}</p>
-              <strong>{item.value}</strong>
-              <span>{item.hint}</span>
+      )}
+      {page === "finance" && (
+        <div className="module-page">
+          <FinancePanel gateway={gateway} />
+        </div>
+      )}
+      {page === "settings" && (
+        <div className="module-page">
+          <NoticeBox notice={notice} />
+          <section
+            className="settings-grid"
+            aria-label="Configuração da residência"
+          >
+            <article className="settings-card">
+              <p className="eyebrow">Pessoas</p>
+              <h2>{household.members.length} de 2 membros</h2>
+              <ul className="member-list">
+                {household.members.map((member) => (
+                  <li key={member.userId}>
+                    <span>{member.displayName}</span>
+                    <small>
+                      {member.role === "owner" ? "Proprietário" : "Membro"}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+              {household.role === "owner" && household.members.length < 2 && (
+                <form className="stack-form compact" onSubmit={invite}>
+                  <label>
+                    Convidar por e-mail
+                    <input name="email" type="email" required maxLength={254} />
+                  </label>
+                  <button className="secondary-button" disabled={busy}>
+                    {busy ? "Enviando…" : "Enviar convite"}
+                  </button>
+                </form>
+              )}
             </article>
-          ))}
+            <article className="settings-card">
+              <p className="eyebrow">Seu perfil</p>
+              <h2>{currentDisplayName}</h2>
+              <form className="stack-form compact" onSubmit={updateProfile}>
+                <label>
+                  Nome de exibição
+                  <input
+                    name="displayName"
+                    defaultValue={currentDisplayName}
+                    required
+                    maxLength={120}
+                  />
+                </label>
+                <button className="secondary-button" disabled={busy}>
+                  Salvar perfil
+                </button>
+              </form>
+            </article>
+            {!taskMvp && <TelegramSettings gateway={gateway} />}
+            <p className="muted">Versão: tasks-mvp-2026.10.29.1</p>
+          </section>
         </div>
-      </section>
-      <section aria-labelledby="acoes-title">
-        <div className="section-heading">
-          <h2 id="acoes-title">Ações rápidas</h2>
-          <span className="muted">Disponíveis no M3</span>
-        </div>
-        <div className="action-grid">
-          {actions.map((action) => (
-            <button
-              className="action-card"
-              type="button"
-              key={action.title}
-              disabled={!action.enabled}
-              title={action.enabled ? undefined : "Ainda não disponível"}
-              onClick={() =>
-                action.enabled &&
-                document
-                  .querySelector(action.target)
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
-            >
-              <span className="action-icon" aria-hidden="true">
-                {action.icon}
-              </span>
-              <span>
-                <strong>{action.title}</strong>
-                <small>{action.description}</small>
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-      <TaskPanel gateway={gateway} user={user} household={household} />
-      <FinancePanel gateway={gateway} />
-      <section
-        className="settings-grid"
-        aria-label="Configuração da residência"
-      >
-        <article className="settings-card">
-          <p className="eyebrow">Pessoas</p>
-          <h2>{household.members.length} de 2 membros</h2>
-          <ul className="member-list">
-            {household.members.map((member) => (
-              <li key={member.userId}>
-                <span>{member.displayName}</span>
-                <small>
-                  {member.role === "owner" ? "Proprietário" : "Membro"}
-                </small>
-              </li>
-            ))}
-          </ul>
-          {household.role === "owner" && household.members.length < 2 && (
-            <form className="stack-form compact" onSubmit={invite}>
-              <label>
-                Convidar por e-mail
-                <input name="email" type="email" required maxLength={254} />
-              </label>
-              <button className="secondary-button" disabled={busy}>
-                {busy ? "Enviando…" : "Enviar convite"}
-              </button>
-            </form>
-          )}
-        </article>
-        <article className="settings-card">
-          <p className="eyebrow">Seu perfil</p>
-          <h2>{currentDisplayName}</h2>
-          <form className="stack-form compact" onSubmit={updateProfile}>
-            <label>
-              Nome de exibição
-              <input
-                name="displayName"
-                defaultValue={currentDisplayName}
-                required
-                maxLength={120}
-              />
-            </label>
-            <button className="secondary-button" disabled={busy}>
-              Salvar perfil
-            </button>
-          </form>
-        </article>
-      </section>
+      )}
       <nav className="bottom-nav" aria-label="Navegação principal">
-        <a className="active" href="#inicio">
-          Início
+        {!taskMvp && (
+          <a className={page === "home" ? "active" : undefined} href="#inicio">
+            Início
+          </a>
+        )}
+        <a className={page === "tasks" ? "active" : undefined} href="#tarefas">
+          Tarefas
         </a>
-        <a href="#tarefas">Tarefas</a>
-        <a href="#financas">Finanças</a>
-        <a href="#agenda">Agenda</a>
+        {!taskMvp && (
+          <a
+            className={page === "finance" ? "active" : undefined}
+            href="#financas"
+          >
+            Finanças
+          </a>
+        )}
+        <a
+          className={page === "settings" ? "active" : undefined}
+          href="#configuracoes"
+        >
+          Ajustes
+        </a>
       </nav>
     </main>
   );
@@ -996,6 +1410,8 @@ export function App({ gateway = defaultGateway }: AppProps) {
     void reload();
     const unsubscribe = gateway.onAuthStateChange(
       ({ event, user: nextUser }) => {
+        if (event === "TOKEN_REFRESHED") return;
+        if (event === "SIGNED_OUT") clearTaskSnapshots();
         const generation = ++loadGeneration.current;
         setLoading(true);
         setRecovery(event === "PASSWORD_RECOVERY");

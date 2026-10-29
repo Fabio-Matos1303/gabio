@@ -1,9 +1,21 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+const developmentCsp = (): Plugin => ({
+  name: "gabio-development-csp",
+  apply: "serve",
+  transformIndexHtml(html) {
+    return html.replace(
+      "style-src 'self';",
+      "style-src 'self' 'unsafe-inline';",
+    );
+  },
+});
+
 export default defineConfig({
   plugins: [
+    developmentCsp(),
     react(),
     VitePWA({
       registerType: "autoUpdate",
@@ -14,9 +26,29 @@ export default defineConfig({
         theme_color: "#12261f",
         background_color: "#f4f1e8",
         display: "standalone",
-        start_url: "/",
+        id: "/",
+        scope: "/",
+        start_url: "/#tarefas",
         lang: "pt-BR",
         icons: [
+          {
+            src: "/icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "/icon-maskable-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable",
+          },
           {
             src: "/icon.svg",
             sizes: "any",

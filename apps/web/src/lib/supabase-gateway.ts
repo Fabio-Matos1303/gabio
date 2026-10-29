@@ -21,9 +21,12 @@ import {
   GatewayError,
   type AppGateway,
   type AuthEvent,
+  type CalendarEvent,
   type FinanceSnapshot,
   type HouseholdContext,
   type SessionUser,
+  type TelegramConnection,
+  type TelegramPairing,
 } from "./app-gateway.js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
@@ -68,6 +71,18 @@ const authEventSchema = z.enum([
 const invitationDeliverySchema = z
   .object({ delivered: z.literal(true) })
   .strict();
+const telegramConnectionSchema = z
+  .object({
+    connected: z.literal(true),
+    linkedAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+const telegramPairingSchema = z
+  .object({
+    code: z.string().regex(/^[a-f0-9]{48}$/),
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
 
 const taskRowSchema = z
   .object({
@@ -80,11 +95,21 @@ const taskRowSchema = z
     due_at: z.string().nullable(),
     visibility: z.enum(["household", "private"]),
     recurrence: z.enum(["none", "daily", "weekly", "monthly"]),
-    status: z.enum(["open", "completed", "cancelled"]),
+    status: z.enum(["open", "in_progress", "completed", "cancelled"]),
     completed_at: z.string().nullable(),
     version: z.number().int().positive(),
     created_at: z.string(),
     updated_at: z.string(),
+  })
+  .strict();
+const calendarEventRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    title: z.string().trim().min(1).max(240),
+    starts_at: z.string().datetime({ offset: true }),
+    ends_at: z.string().datetime({ offset: true }),
+    timezone: z.string().trim().min(1).max(120),
+    sync_status: z.enum(["pending", "synced", "failed", "cancelled"]),
   })
   .strict();
 
@@ -96,6 +121,7 @@ const financeAccountRowSchema = z
     currency_code: z.literal("BRL"),
     visibility: z.enum(["household", "private"]),
     version: z.number().int().positive(),
+    is_archived: z.boolean(),
   })
   .strict();
 const financeCategoryRowSchema = z
@@ -105,6 +131,7 @@ const financeCategoryRowSchema = z
     kind: z.enum(["income", "expense", "both"]),
     visibility: z.enum(["household", "private"]),
     version: z.number().int().positive(),
+    is_archived: z.boolean(),
   })
   .strict();
 const financeTransactionRowSchema = z
@@ -326,6 +353,38 @@ export class SupabaseGateway implements AppGateway {
     if (error) throw friendlyError();
   }
 
+  async getTelegramConnection(): Promise<TelegramConnection | null> {
+    const { data, error } = await this.configuredClient().rpc(
+      "get_telegram_connection",
+    );
+    if (error) throw friendlyError();
+    if (data === null) return null;
+    try {
+      return telegramConnectionSchema.parse(data);
+    } catch {
+      throw friendlyError();
+    }
+  }
+
+  async requestTelegramPairing(): Promise<TelegramPairing> {
+    const { data, error } = await this.configuredClient().rpc(
+      "request_telegram_pairing",
+    );
+    if (error) throw friendlyError();
+    try {
+      return telegramPairingSchema.parse(data);
+    } catch {
+      throw friendlyError();
+    }
+  }
+
+  async revokeTelegramConnection(): Promise<void> {
+    const { error } = await this.configuredClient().rpc(
+      "revoke_telegram_connection",
+    );
+    if (error) throw friendlyError();
+  }
+
   async listTasks() {
     const { data, error } = await this.configuredClient()
       .from("tasks")
@@ -336,6 +395,30 @@ export class SupabaseGateway implements AppGateway {
     if (error) throw friendlyError();
     try {
       return z.array(taskRowSchema).parse(data).map(parseTaskRow);
+    } catch {
+      throw friendlyError();
+    }
+  }
+
+  async listCalendarEvents(): Promise<CalendarEvent[]> {
+    const { data, error } = await this.configuredClient()
+      .from("calendar_events")
+      .select("id, title, starts_at, ends_at, timezone, sync_status")
+      .neq("sync_status", "cancelled")
+      .order("starts_at");
+    if (error) throw friendlyError();
+    try {
+      return z
+        .array(calendarEventRowSchema)
+        .parse(data)
+        .map((row) => ({
+          id: row.id,
+          title: row.title,
+          startsAt: row.starts_at,
+          endsAt: row.ends_at,
+          timezone: row.timezone,
+          syncStatus: row.sync_status,
+        }));
     } catch {
       throw friendlyError();
     }
@@ -352,13 +435,13 @@ export class SupabaseGateway implements AppGateway {
     ] = await Promise.all([
       client
         .from("financial_accounts")
-        .select("id, name, account_type, currency_code, visibility, version")
-        .eq("is_archived", false)
+        .select(
+          "id, name, account_type, currency_code, visibility, version, is_archived",
+        )
         .order("name"),
       client
         .from("finance_categories")
-        .select("id, name, kind, visibility, version")
-        .eq("is_archived", false)
+        .select("id, name, kind, visibility, version, is_archived")
         .order("name"),
       loadVisibleTransactions(client),
       client
@@ -394,6 +477,7 @@ export class SupabaseGateway implements AppGateway {
           currencyCode: row.currency_code,
           visibility: row.visibility,
           version: row.version,
+          isArchived: row.is_archived,
         }));
       const categories = z
         .array(financeCategoryRowSchema)
@@ -404,6 +488,7 @@ export class SupabaseGateway implements AppGateway {
           kind: row.kind,
           visibility: row.visibility,
           version: row.version,
+          isArchived: row.is_archived,
         }));
       const transactions = z
         .array(financeTransactionRowSchema)

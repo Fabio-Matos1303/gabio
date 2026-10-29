@@ -11,7 +11,26 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
+  {
+    files: ["scripts/**/*.cjs"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: {
+        require: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        WebSocket: "readonly",
+        Buffer: "readonly",
+        process: "readonly",
+        setTimeout: "readonly",
+      },
+    },
+  },
   ...tseslint.configs.recommended,
+  {
+    files: ["scripts/**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
   {
     files: ["**/*.{ts,tsx}"],
     rules: {

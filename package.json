@@ -17,7 +17,8 @@
     "test:db": "supabase test db",
     "typecheck": "pnpm -r --if-present typecheck",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "verify:all": "pnpm verify && pnpm test:db"
+    "verify:all": "pnpm verify && pnpm test:db",
+    "build:production": "pnpm --filter @gabio/web build"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
