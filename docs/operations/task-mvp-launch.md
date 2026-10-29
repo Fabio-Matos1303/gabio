@@ -75,7 +75,7 @@ com o mesmo commandId, preservando idempotência.
 - URLs de autenticação e recuperação e preflight CORS de convite conferidos em produção.
 - Supabase retomado após status INACTIVE; histórico remoto estava aplicado até M3.
 - Migrations 202609270001 e 202609270002 de tarefas aplicadas em produção.
-- Endurecimento adicional de execução anônima preparado em 202610290001 e testado localmente; aplicação remota depende de aprovação humana.
+- Endurecimento de execução anônima 202610290001 aplicado em produção com aprovação humana; execução anônima revogada e autenticada preservada.
 - A migration 202609270003 e a função Telegram ficam fora desta publicação.
 
 A inspeção de viewport não substitui o teste de instalação, toque e teclado no
@@ -95,3 +95,18 @@ VITE_TASKS_MVP=true (também é o padrão). Nunca fornecer service_role no front
 Em caso de regressão do frontend, retornar o deploy Cloudflare à versão anterior.
 As migrations de tarefas são incrementais e compatíveis com o cliente anterior;
 não remover o enum nem reescrever histórico para reverter a interface.
+
+## Correção do build de preview do Cloudflare
+
+O log de 2026-10-29 confirma que TypeScript, Vite e PWA compilaram com sucesso.
+A falha ocorreu em `npx wrangler preview`, por ausência do bloco `previews`.
+O arquivo `wrangler.jsonc` inclui `previews: {}` no nível raiz para permitir o
+comando padrão das branches de preview. Não há bindings de banco ou segredos
+nesse bloco. O frontend usa as variáveis públicas de Supabase do build.
+
+No Cloudflare, manter a branch de produção `main`, build `pnpm run build`,
+deploy de produção `npx wrangler deploy` e comando de preview
+`npx wrangler preview`. Um preview aprovado não atualiza automaticamente a URL
+de produção: a entrega precisa ser integrada à branch de produção.
+
+Referência: https://developers.cloudflare.com/workers/previews/configuration/

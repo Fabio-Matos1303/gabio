@@ -1,6 +1,7 @@
 {
   "name": "gabio",
   "compatibility_date": "2026-09-01",
+  "previews": {},
   "assets": {
     "directory": "./apps/web/dist",
     "not_found_handling": "single-page-application",
