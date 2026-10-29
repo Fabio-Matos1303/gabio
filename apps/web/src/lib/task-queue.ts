@@ -60,7 +60,7 @@ export class IndexedDbTaskCommandQueue implements TaskCommandQueue {
       return await new Promise<T>((resolve, reject) => {
         const transaction = database.transaction("commands", mode);
         const request = operation(transaction.objectStore("commands"));
-        request.onsuccess = () => resolve(request.result);
+        transaction.oncomplete = () => resolve(request.result);
         request.onerror = () => reject(request.error);
         transaction.onabort = () => reject(transaction.error);
       });

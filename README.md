@@ -6,7 +6,7 @@ O projeto usa uma arquitetura híbrida: regras determinísticas primeiro, Gemini
 
 ## Estado
 
-Fundação, M1, M2 e M3 concluídos. O M3 cobre finanças ponta a ponta com contas privadas ou compartilhadas, confirmação vinculada ao comando, ledger por estorno e exportação validada.
+O lançamento atual prioriza o MVP online de tarefas como PWA instalável: login, residência, criação, edição, responsável, prazo, recorrência, privacidade e quadro de status. Finanças e integrações permanecem fora da navegação do MVP. Consulte docs/operations/task-mvp-launch.md para a versão e os critérios de homologação.
 
 ## Stack
 

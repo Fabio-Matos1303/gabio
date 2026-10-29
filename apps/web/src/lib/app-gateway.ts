@@ -15,6 +15,7 @@ export type FinanceAccount = {
   currencyCode: "BRL";
   visibility: "household" | "private";
   version: number;
+  isArchived?: boolean;
 };
 export type FinanceCategory = {
   id: string;
@@ -22,6 +23,7 @@ export type FinanceCategory = {
   kind: "income" | "expense" | "both";
   visibility: "household" | "private";
   version: number;
+  isArchived?: boolean;
 };
 export type FinanceTransaction = {
   id: string;
@@ -62,6 +64,22 @@ export type FinanceSnapshot = {
   transactions: FinanceTransaction[];
   budgets: FinanceBudget[];
   recurrences: FinanceRecurrence[];
+};
+export type CalendarEvent = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  syncStatus: "pending" | "synced" | "failed" | "cancelled";
+};
+export type TelegramConnection = {
+  connected: true;
+  linkedAt: string;
+};
+export type TelegramPairing = {
+  code: string;
+  expiresAt: string;
 };
 
 export type AuthEvent =
@@ -109,7 +127,11 @@ export interface AppGateway {
   acceptInvitation(invitationId: string): Promise<void>;
   inviteMember(householdId: string, email: string): Promise<void>;
   updateProfile(displayName: string, timezone: string): Promise<void>;
+  getTelegramConnection(): Promise<TelegramConnection | null>;
+  requestTelegramPairing(): Promise<TelegramPairing>;
+  revokeTelegramConnection(): Promise<void>;
   listTasks(): Promise<Task[]>;
+  listCalendarEvents(): Promise<CalendarEvent[]>;
   executeTaskCommand(command: TaskGatewayCommand): Promise<TaskCommandReceipt>;
   loadFinance(): Promise<FinanceSnapshot>;
   prepareFinanceCommand(

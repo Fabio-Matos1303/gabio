@@ -1,5 +1,12 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AppGateway,
@@ -9,6 +16,7 @@ import type {
 } from "../lib/app-gateway.js";
 import { toSessionUser } from "../lib/supabase-gateway.js";
 import { App } from "./App.js";
+import { formatMinor, monthKeyInHouseholdTimezone } from "./FinancePanel.js";
 
 const user: SessionUser = {
   id: "10000000-0000-4000-8000-000000000001",
@@ -76,7 +84,14 @@ function gatewayWith(
     acceptInvitation: vi.fn().mockResolvedValue(undefined),
     inviteMember: vi.fn().mockResolvedValue(undefined),
     updateProfile: vi.fn().mockResolvedValue(undefined),
+    getTelegramConnection: vi.fn().mockResolvedValue(null),
+    requestTelegramPairing: vi.fn().mockResolvedValue({
+      code: "a".repeat(48),
+      expiresAt: "2026-09-27T18:00:00.000Z",
+    }),
+    revokeTelegramConnection: vi.fn().mockResolvedValue(undefined),
     listTasks: vi.fn().mockResolvedValue([]),
+    listCalendarEvents: vi.fn().mockResolvedValue([]),
     loadFinance: vi.fn().mockResolvedValue({
       accounts: [],
       categories: [],
@@ -107,6 +122,206 @@ function gatewayWith(
 }
 
 describe("App", () => {
+  it("loads tasks and finishes loading under StrictMode effect replay", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.listTasks = vi
+      .fn()
+      .mockResolvedValue([makeTask({ title: "Tarefa em StrictMode" })]);
+    render(
+      <StrictMode>
+        <App gateway={gateway} />
+      </StrictMode>,
+    );
+    expect(await screen.findByText("Tarefa em StrictMode")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Atualizar tarefas" }),
+      ).toBeEnabled(),
+    );
+    expect(screen.queryByText("Atualizando tarefas…")).not.toBeInTheDocument();
+  });
+
+  it("updates from the server without clearing a draft", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.listTasks = vi
+      .fn()
+      .mockResolvedValueOnce([makeTask()])
+      .mockResolvedValue([
+        makeTask({ title: "Atualizada por outro membro", version: 2 }),
+      ]);
+    render(<App gateway={gateway} />);
+    const update = await screen.findByRole("button", {
+      name: "Atualizar tarefas",
+    });
+    await waitFor(() => expect(update).toBeEnabled());
+    const title = screen.getByLabelText("Título da tarefa");
+    fireEvent.change(title, { target: { value: "Rascunho não enviado" } });
+    fireEvent.click(update);
+    expect(
+      await screen.findByText("Atualizada por outro membro"),
+    ).toBeInTheDocument();
+    expect(title).toHaveValue("Rascunho não enviado");
+  });
+  it("blocks repeated submission while a command is in flight", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    const response =
+      deferred<Awaited<ReturnType<AppGateway["executeTaskCommand"]>>>();
+    gateway.executeTaskCommand = vi.fn().mockReturnValue(response.promise);
+    render(<App gateway={gateway} />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Atualizar tarefas" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.change(screen.getByLabelText("Título da tarefa"), {
+      target: { value: "Envio único" },
+    });
+    const button = screen.getByRole("button", { name: "Adicionar tarefa" });
+    const form = button.closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledTimes(1),
+    );
+    expect(screen.getByRole("button", { name: "Enviando…" })).toBeDisabled();
+    const command = vi.mocked(gateway.executeTaskCommand).mock.calls[0]![0];
+    response.resolve({
+      commandId: command.commandId,
+      replayed: false,
+      task: makeTask(),
+    });
+    expect(await screen.findByText("Tarefa atualizada.")).toBeInTheDocument();
+  });
+  it("distinguishes a confirmed command from a failed follow-up read", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.listTasks = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValue(new Error("network"));
+    render(<App gateway={gateway} />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Atualizar tarefas" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.change(screen.getByLabelText("Título da tarefa"), {
+      target: { value: "Confirmada no servidor" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    expect(
+      await screen.findByText(
+        "Alteração confirmada. Não foi possível atualizar a lista; toque em Atualizar tarefas.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Tarefa atualizada.")).not.toBeInTheDocument();
+  });
+
+  it("keeps a failed network creation pending and clears the submitted form", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.executeTaskCommand = vi
+      .fn()
+      .mockRejectedValue(new Error("network"));
+    render(<App gateway={gateway} />);
+    const title = await screen.findByLabelText("Título da tarefa");
+    fireEvent.change(title, { target: { value: "Tarefa pendente sintética" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    await waitFor(() => expect(title).toHaveValue(""));
+    expect(
+      await screen.findByText("Tarefa pendente sintética"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Aguardando sincronização")).toBeInTheDocument();
+    const attempts = vi.mocked(gateway.executeTaskCommand).mock.calls;
+    expect(attempts.length).toBeGreaterThan(0);
+    expect(new Set(attempts.map(([command]) => command.commandId)).size).toBe(
+      1,
+    );
+  });
+
+  it("opens the task MVP without finance or Telegram navigation", async () => {
+    vi.stubEnv("VITE_TASKS_MVP", "true");
+    render(<App gateway={gatewayWith()} />);
+    expect(
+      await screen.findByRole("heading", { name: "Tarefas" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Finanças" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Início" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "Ajustes" }));
+    expect(
+      await screen.findByLabelText("Nome de exibição"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Conectar Telegram" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("edits a task with its loaded version and completes it directly", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.listTasks = vi.fn().mockResolvedValue([makeTask()]);
+    render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    const editor = screen.getByRole("region", { name: "Editar tarefa" });
+    fireEvent.change(within(editor).getByLabelText("Título"), {
+      target: { value: "Título sintético revisado" },
+    });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Salvar tarefa" }),
+    );
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "update",
+          payload: expect.objectContaining({
+            taskId: makeTask().id,
+            expectedVersion: 1,
+            title: "Título sintético revisado",
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", { name: "Editar tarefa" }),
+      ).not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Concluir" }));
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "set_status",
+          payload: expect.objectContaining({
+            status: "completed",
+            expectedVersion: 1,
+          }),
+        }),
+      ),
+    );
+  });
+
+  beforeEach(() => {
+    vi.stubEnv("VITE_TASKS_MVP", "false");
+    localStorage.clear();
+    window.history.replaceState({}, "", "/");
+  });
+
+  it("uses exact cents and the household timezone in financial summaries", () => {
+    expect(formatMinor(9_007_199_254_740_993n)).toBe(
+      "R$ 90.071.992.547.409,93",
+    );
+    expect(
+      monthKeyInHouseholdTimezone(new Date("2026-10-01T01:30:00.000Z")),
+    ).toBe("2026-09");
+  });
+
   it("fails closed when Supabase is not configured", () => {
     render(<App gateway={gatewayWith({ configured: false })} />);
     expect(
@@ -163,7 +378,8 @@ describe("App", () => {
     const gateway = gatewayWith();
     render(<App gateway={gateway} />);
     expect(await screen.findByText("Nossa casa")).toBeInTheDocument();
-    expect(screen.getByText("1 de 2 membros")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Configurações/ }));
+    expect(await screen.findByText("1 de 2 membros")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Convidar por e-mail"), {
       target: { value: "convidada@example.test" },
     });
@@ -176,17 +392,46 @@ describe("App", () => {
     );
   });
 
-  it("enables quick tasks and finance while keeping calendar disabled", async () => {
-    render(<App gateway={gatewayWith()} />);
+  it("creates a temporary Telegram pairing from settings", async () => {
+    const gateway = gatewayWith();
+    render(<App gateway={gateway} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Configurações" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Conectar Telegram" }),
+    );
+    await waitFor(() =>
+      expect(gateway.requestTelegramPairing).toHaveBeenCalled(),
+    );
+    expect(await screen.findByText("Código temporário")).toBeInTheDocument();
+    expect(screen.getByText("a".repeat(48))).toBeInTheDocument();
+  });
+
+  it("loads the monthly home calendar and exposes month navigation", async () => {
+    const gateway = gatewayWith();
+    gateway.listCalendarEvents = vi.fn().mockResolvedValue([
+      {
+        id: "70000000-0000-4000-8000-000000000001",
+        title: "Compromisso de teste",
+        startsAt: new Date().toISOString(),
+        endsAt: new Date(Date.now() + 3_600_000).toISOString(),
+        timezone: "America/Bahia",
+        syncStatus: "pending",
+      },
+    ]);
+
+    render(<App gateway={gateway} />);
+
     expect(
-      (await screen.findAllByRole("button", { name: /Nova tarefa/ }))[0],
-    ).toBeEnabled();
+      await screen.findByRole("heading", { name: "Visão da casa" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mês anterior" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Próximo mês" })).toBeEnabled();
+    await waitFor(() => expect(gateway.listCalendarEvents).toHaveBeenCalled());
     expect(
-      screen.getByRole("button", { name: /Novo lançamento/ }),
-    ).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: /Novo compromisso/ }),
-    ).toBeDisabled();
+      (await screen.findAllByText("Compromisso de teste")).length,
+    ).toBeGreaterThan(0);
   });
 
   it("prepares and confirms a financial transaction", async () => {
@@ -216,6 +461,12 @@ describe("App", () => {
       recurrences: [],
     });
     render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("link", { name: "Finanças" }));
+    expect(
+      await screen.findByRole("heading", { name: "O que merece sua atenção" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Lançamentos" }));
+    await screen.findByRole("option", { name: "Conta casa" });
     fireEvent.change(await screen.findByLabelText("Conta"), {
       target: { value: "50000000-0000-4000-8000-000000000010" },
     });
@@ -247,6 +498,82 @@ describe("App", () => {
       expect(gateway.confirmFinanceCommand).toHaveBeenCalledWith(
         expect.objectContaining({
           proposalId: "50000000-0000-4000-8000-000000000001",
+        }),
+      ),
+    );
+  });
+
+  it("manages reusable financial parameters without an agenda tab", async () => {
+    const gateway = gatewayWith();
+    gateway.loadFinance = vi.fn().mockResolvedValue({
+      accounts: [
+        {
+          id: "50000000-0000-4000-8000-000000000020",
+          name: "Conta de teste",
+          accountType: "checking",
+          currencyCode: "BRL",
+          visibility: "household",
+          version: 2,
+        },
+        {
+          id: "50000000-0000-4000-8000-000000000022",
+          name: "Conta arquivada de teste",
+          accountType: "cash",
+          currencyCode: "BRL",
+          visibility: "household",
+          version: 4,
+          isArchived: true,
+        },
+      ],
+      categories: [
+        {
+          id: "50000000-0000-4000-8000-000000000021",
+          name: "Categoria de teste",
+          kind: "expense",
+          visibility: "household",
+          version: 3,
+        },
+        {
+          id: "50000000-0000-4000-8000-000000000023",
+          name: "Categoria arquivada de teste",
+          kind: "expense",
+          visibility: "household",
+          version: 5,
+          isArchived: true,
+        },
+      ],
+      transactions: [],
+      budgets: [],
+      recurrences: [],
+    });
+
+    render(<App gateway={gateway} />);
+    expect(
+      screen.queryByRole("link", { name: "Agenda" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("link", { name: "Finanças" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Cadastros" }));
+
+    expect(screen.getByText("Conta de teste")).toBeInTheDocument();
+    expect(screen.getByText("Categoria de teste")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Conta arquivada de teste"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Categoria arquivada de teste"),
+    ).not.toBeInTheDocument();
+    const account = screen.getByText("Conta de teste").closest("article");
+    expect(account).not.toBeNull();
+    fireEvent.click(within(account!).getByRole("button", { name: "Arquivar" }));
+
+    await waitFor(() =>
+      expect(gateway.prepareFinanceCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "archive_account",
+          payload: {
+            accountId: "50000000-0000-4000-8000-000000000020",
+            expectedVersion: 2,
+          },
         }),
       ),
     );
@@ -327,31 +654,76 @@ describe("App", () => {
     );
   });
 
-  it("creates a task from deterministic Portuguese text", async () => {
+  it("creates a task from the single quick-entry form", async () => {
     const gateway = gatewayWith();
     render(<App gateway={gateway} />);
-    fireEvent.change(await screen.findByLabelText("Criar tarefa por texto"), {
-      target: { value: "criar tarefa lavar roupa para mim" },
+    fireEvent.click(await screen.findByRole("link", { name: "Tarefas" }));
+    fireEvent.change(await screen.findByLabelText("Título da tarefa"), {
+      target: { value: "Lavar roupa" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Criar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
         expect.objectContaining({
           type: "create",
           payload: expect.objectContaining({
-            title: "lavar roupa",
-            assigneeUserId: user.id,
+            title: "Lavar roupa",
+            assigneeUserId: null,
+            visibility: "household",
+            recurrence: "none",
           }),
         }),
       ),
     );
   });
 
+  it("organizes tasks in visual status columns", async () => {
+    const gateway = gatewayWith();
+    gateway.listTasks = vi.fn().mockResolvedValue([
+      makeTask({ title: "Tarefa aberta" }),
+      makeTask({
+        id: "40000000-0000-4000-8000-000000000002",
+        title: "Tarefa concluída",
+        status: "completed",
+        completedAt: "2026-09-24T13:00:00.000Z",
+      }),
+      makeTask({
+        id: "40000000-0000-4000-8000-000000000003",
+        title: "Tarefa em andamento",
+        status: "in_progress",
+      }),
+    ]);
+
+    render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("link", { name: "Tarefas" }));
+
+    const board = await screen.findByRole("region", {
+      name: "Quadro de tarefas",
+    });
+    expect(await within(board).findByText("Tarefa aberta")).toBeInTheDocument();
+    expect(
+      await within(board).findByText("Tarefa concluída"),
+    ).toBeInTheDocument();
+    expect(
+      await within(board).findByText("Tarefa em andamento"),
+    ).toBeInTheDocument();
+    expect(
+      within(board).getByRole("heading", { name: "A fazer" }),
+    ).toBeInTheDocument();
+    expect(
+      within(board).getByRole("heading", { name: "Em andamento" }),
+    ).toBeInTheDocument();
+    expect(
+      within(board).getByRole("heading", { name: "Concluídas" }),
+    ).toBeInTheDocument();
+  });
+
   it("sends status changes with the visible expected version", async () => {
     const gateway = gatewayWith();
     gateway.listTasks = vi.fn().mockResolvedValue([makeTask()]);
     render(<App gateway={gateway} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Concluir" }));
+    fireEvent.click(await screen.findByRole("link", { name: "Tarefas" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Iniciar" }));
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -359,7 +731,7 @@ describe("App", () => {
           payload: {
             taskId: "40000000-0000-4000-8000-000000000001",
             expectedVersion: 1,
-            status: "completed",
+            status: "in_progress",
           },
         }),
       ),

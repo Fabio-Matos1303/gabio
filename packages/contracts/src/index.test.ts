@@ -149,6 +149,20 @@ describe("taskGatewayCommandSchema", () => {
       }),
     ).toThrow();
   });
+  it("accepts the in-progress workflow status", () => {
+    const command = taskGatewayCommandSchema.parse({
+      commandId: "00000000-0000-4000-8000-000000000016",
+      type: "set_status",
+      payload: {
+        taskId: "00000000-0000-4000-8000-000000000012",
+        expectedVersion: 1,
+        status: "in_progress",
+      },
+    });
+    expect(command.type).toBe("set_status");
+    if (command.type !== "set_status") throw new Error("unexpected command");
+    expect(command.payload.status).toBe("in_progress");
+  });
   it("validates a versioned task receipt", () => {
     const result = taskCommandReceiptSchema.parse({
       commandId: "00000000-0000-4000-8000-000000000010",

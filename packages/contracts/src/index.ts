@@ -11,7 +11,12 @@ export const taskRecurrenceSchema = z.enum([
 ]);
 export type TaskRecurrence = z.infer<typeof taskRecurrenceSchema>;
 
-export const taskStatusSchema = z.enum(["open", "completed", "cancelled"]);
+export const taskStatusSchema = z.enum([
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 
 export const commandSourceSchema = z.enum([
