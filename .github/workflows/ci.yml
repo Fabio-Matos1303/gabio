@@ -22,6 +22,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm verify
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.6
+      - run: deno check --no-config --no-lock --node-modules-dir=none supabase/functions/google-calendar/index.ts supabase/functions/google-calendar-worker/index.ts
 
   database-security:
     runs-on: ubuntu-latest

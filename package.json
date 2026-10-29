@@ -16,9 +16,10 @@
     "test": "pnpm -r --if-present test",
     "test:db": "supabase test db",
     "typecheck": "pnpm -r --if-present typecheck",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:calendar && pnpm build",
     "verify:all": "pnpm verify && pnpm test:db",
-    "build:production": "pnpm --filter @gabio/web build"
+    "build:production": "pnpm --filter @gabio/web build",
+    "test:calendar": "node --experimental-transform-types --test supabase/functions/_shared/google-calendar.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

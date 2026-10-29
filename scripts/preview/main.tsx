@@ -64,6 +64,15 @@ const gateway: AppGateway = {
   acceptInvitation: unavailable,
   inviteMember: unavailable,
   updateProfile: async () => {},
+  getGoogleCalendarStatus: async () => ({ enabled: true, connection: null }),
+  connectGoogleCalendar: async () => {
+    throw new Error("Integração indisponível");
+  },
+  saveGoogleCalendarPreferences: async () => {},
+  completeGoogleCalendar: async () => {},
+  repairGoogleCalendar: async () => {},
+  syncGoogleCalendar: async () => {},
+  disconnectGoogleCalendar: async () => {},
   getTelegramConnection: async () => null,
   requestTelegramPairing: unavailable,
   revokeTelegramConnection: async () => {},

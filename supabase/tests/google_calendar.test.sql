@@ -1,0 +1,184 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select no_plan();
+insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data) values
+('00000000-0000-0000-0000-000000000000','a1000000-0000-4000-8000-000000000001','authenticated','authenticated','calendar-owner@example.test','',now(),now(),now(),'{}','{}'),
+('00000000-0000-0000-0000-000000000000','a1000000-0000-4000-8000-000000000002','authenticated','authenticated','calendar-member@example.test','',now(),now(),now(),'{}','{}'),
+('00000000-0000-0000-0000-000000000000','a1000000-0000-4000-8000-000000000003','authenticated','authenticated','calendar-outside@example.test','',now(),now(),now(),'{}','{}');
+insert into public.households(id,name,created_by) values('a2000000-0000-4000-8000-000000000001','Casa sintética','a1000000-0000-4000-8000-000000000001');
+insert into public.household_members(household_id,user_id,role) values
+('a2000000-0000-4000-8000-000000000001','a1000000-0000-4000-8000-000000000001','owner'),
+('a2000000-0000-4000-8000-000000000001','a1000000-0000-4000-8000-000000000002','member');
+create temporary table gc_test_jobs(job jsonb);
+create temporary table gc_test_old_ids(id uuid,event_id text);
+grant all on gc_test_old_ids to service_role;
+grant all on gc_test_jobs to service_role;
+set local role service_role;
+select lives_ok($$select public.gc_begin_oauth('a1000000-0000-4000-8000-000000000001',repeat('a',64),'synthetic-verifier-encrypted','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":10}')$$,'server creates bound OAuth state');
+select is(public.gc_consume_oauth(repeat('a',64))->>'user_id','a1000000-0000-4000-8000-000000000001','OAuth state binds current user');
+select throws_ok($$select public.gc_consume_oauth(repeat('a',64))$$,'22023',null,'OAuth state cannot be replayed');
+select throws_ok($$select public.gc_begin_oauth('a1000000-0000-4000-8000-000000000001',repeat('b',64),'synthetic-verifier-encrypted','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":-5}')$$,'22023',null,'negative reminder rejected');
+select throws_ok($$select public.gc_finish_oauth('a1000000-0000-4000-8000-000000000003','a2000000-0000-4000-8000-000000000001','synthetic-token-encrypted','["https://www.googleapis.com/auth/calendar.app.created"]','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":10}')$$,'42501',null,'outside identity cannot connect to household');
+select public.gc_finish_oauth('a1000000-0000-4000-8000-000000000001','a2000000-0000-4000-8000-000000000001','synthetic-token-encrypted','["https://www.googleapis.com/auth/calendar.app.created"]','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":10}');
+select public.gc_finish_oauth('a1000000-0000-4000-8000-000000000002','a2000000-0000-4000-8000-000000000001','synthetic-token-encrypted','["https://www.googleapis.com/auth/calendar.app.created"]','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":null}');
+
+select public.gc_stage_oauth('a1000000-0000-4000-8000-000000000001','a2000000-0000-4000-8000-000000000001','synthetic-token-staged','["https://www.googleapis.com/auth/calendar.app.created"]','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":10,"importUpcoming":false}',repeat('t',43));
+select throws_ok($$select public.gc_complete_oauth('a1000000-0000-4000-8000-000000000002',repeat('t',43))$$,'22023',null,'OAuth confirmation rejects different authenticated user');
+select lives_ok($$select public.gc_complete_oauth('a1000000-0000-4000-8000-000000000001',repeat('t',43))$$,'OAuth confirmation completes only as original actor');
+select throws_ok($$select public.gc_complete_oauth('a1000000-0000-4000-8000-000000000001',repeat('t',43))$$,'22023',null,'OAuth confirmation ticket is one-use');
+reset role;
+select is((select count(*) from public.google_calendar_connections),2::bigint,'each member has own connection');
+select ok(not has_schema_privilege('authenticated','app_private','USAGE'),'browser cannot access secret schema');
+select ok(not has_function_privilege('authenticated','public.gc_claim_jobs(integer)','EXECUTE'),'browser cannot claim server jobs');
+select ok(not has_function_privilege('anon','public.gc_consume_oauth(text)','EXECUTE'),'anonymous client cannot consume state');
+select ok(has_function_privilege('service_role','public.gc_claim_jobs(integer)','EXECUTE'),'server role can claim jobs');
+set local role authenticated;
+select set_config('request.jwt.claim.sub','a1000000-0000-4000-8000-000000000001',true);
+select is((select count(*) from public.google_calendar_connections),1::bigint,'RLS shows only own connection');
+select throws_ok($$update public.google_calendar_connections set export_private=true$$,'42501',null,'client cannot bypass preferences gateway');
+select throws_ok($$select public.gc_status('a1000000-0000-4000-8000-000000000002')$$,'42501',null,'client cannot impersonate actor in server RPC');
+select set_config('request.jwt.claim.sub','a1000000-0000-4000-8000-000000000003',true);
+select is((select count(*) from public.google_calendar_connections),0::bigint,'outside identity cannot read connections');
+reset role;
+insert into public.tasks(id,household_id,owner_user_id,created_by,title,due_at,idempotency_key,visibility) values
+('a3000000-0000-4000-8000-000000000001','a2000000-0000-4000-8000-000000000001',null,'a1000000-0000-4000-8000-000000000001','Compartilhada sintética',now()+interval '1 day','a4000000-0000-4000-8000-000000000001','household'),
+('a3000000-0000-4000-8000-000000000002','a2000000-0000-4000-8000-000000000001','a1000000-0000-4000-8000-000000000001','a1000000-0000-4000-8000-000000000001','Privada sintética',now()+interval '2 day','a4000000-0000-4000-8000-000000000002','private'),
+('a3000000-0000-4000-8000-000000000003','a2000000-0000-4000-8000-000000000001',null,'a1000000-0000-4000-8000-000000000001','Sem prazo',null,'a4000000-0000-4000-8000-000000000003','household');
+select is((select count(*) from public.task_calendar_links where task_id='a3000000-0000-4000-8000-000000000001'),2::bigint,'shared task generates one projection per account');
+select is((select count(*) from public.task_calendar_links where task_id='a3000000-0000-4000-8000-000000000002'),1::bigint,'private task generates only owner projection');
+select is((select count(*) from public.task_calendar_links where task_id='a3000000-0000-4000-8000-000000000003'),0::bigint,'task without deadline does not export');
+select is((select count(*) from public.outbox_events where gc_connection_id is not null),3::bigint,'task changes transactionally enqueue delivery');
+select ok(not exists(select 1 from public.outbox_events where gc_connection_id is not null and payload<>'{}'::jsonb),'queue payload omits titles and credentials');
+set local role service_role;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(10));
+select is((select count(*) from gc_test_jobs),2::bigint,'claim serializes each connection');
+select is(jsonb_array_length(public.gc_claim_jobs(10)),0,'leased connections cannot be claimed twice');
+select ok((select bool_and(job->>'eventId' ~ '^[0-9a-v]+$') from gc_test_jobs),'deterministic event IDs satisfy Google format');
+select throws_ok(format('select public.gc_update_token(%L,%L,%L,%L,%L)',(select job->>'connectionId' from gc_test_jobs limit 1),'synthetic-token-refreshed','synthetic-wrong-cipher',(select job->>'jobId' from gc_test_jobs limit 1),(select job->>'leaseToken' from gc_test_jobs limit 1)),'40001',null,'refresh rejects obsolete credential generation');
+select lives_ok(format('select public.gc_update_token(%L,%L,%L,%L,%L)',(select job->>'connectionId' from gc_test_jobs limit 1),'synthetic-token-refreshed',(select job->>'tokenCipher' from gc_test_jobs limit 1),(select job->>'jobId' from gc_test_jobs limit 1),(select job->>'leaseToken' from gc_test_jobs limit 1)),'refresh succeeds only with current lease and cipher');
+select lives_ok(format('select public.gc_set_target(%L,%L,null)',(select job->>'jobId' from gc_test_jobs limit 1),(select job->>'leaseToken' from gc_test_jobs limit 1)),'calendar creation is marked uncertain before network');
+select is((select public.gc_validate_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid)->>'targetState' from gc_test_jobs limit 1),'creating','retries can detect unresolved calendar creation');
+select lives_ok(format('select public.gc_set_target(%L,%L,%L)',(select job->>'jobId' from gc_test_jobs limit 1),(select job->>'leaseToken' from gc_test_jobs limit 1),'synthetic-calendar@example.test'),'confirmed calendar id persists');
+reset role;
+-- A privacy change while HTTP is in flight invalidates the old claim.
+update public.tasks set visibility='private',owner_user_id='a1000000-0000-4000-8000-000000000001',version=version+1 where id='a3000000-0000-4000-8000-000000000001';
+set local role service_role;
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"synced","etag":"synthetic-etag"}') from gc_test_jobs limit 1;
+reset role;
+select ok(not exists(select 1 from public.task_calendar_links where task_id='a3000000-0000-4000-8000-000000000001' and sync_status='synced'),'superseded acknowledgement cannot mark stale projection synced');
+set local role service_role;
+select ok((select bool_and(public.gc_validate_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid) is null) from gc_test_jobs),'privacy mutation invalidates both previously claimed shared projections');
+truncate gc_test_jobs;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(10));
+select ok((select bool_and(job->>'action'='delete' and job->'task'='null'::jsonb) from gc_test_jobs),'privacy cleanup is prioritized and contains no private task text');
+reset role;
+insert into gc_test_old_ids select l.id,l.event_id from public.task_calendar_links l where l.id in(select gc_link_id from public.outbox_events where id in(select (job->>'jobId')::uuid from gc_test_jobs));
+set local role service_role;
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"deleted"}') from gc_test_jobs;
+reset role;
+select ok((select bool_and(l.event_id<>old.event_id and l.projection_epoch=1) from public.task_calendar_links l join gc_test_old_ids old on old.id=l.id),'confirmed deletion rotates event ID to avoid Google tombstones');
+set local role service_role;
+truncate gc_test_jobs;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(10));
+select is((select count(*) from gc_test_jobs),1::bigint,'only owner remains eligible for new private projection');
+select is((select job->>'userId' from gc_test_jobs),'a1000000-0000-4000-8000-000000000001','new private destination belongs to owner');
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"retry","errorCode":"google_unavailable"}') from gc_test_jobs;
+reset role;
+select ok((select bool_and(available_at>now()) from public.outbox_events where id in(select (job->>'jobId')::uuid from gc_test_jobs)),'backoff postpones failed job');
+set local role service_role;
+select public.gc_disconnect('a1000000-0000-4000-8000-000000000002',false);
+truncate gc_test_jobs;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(10));
+select is((select count(*) from gc_test_jobs where job->>'action'='revoke'),1::bigint,'disconnect without cleanup schedules revocation');
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"deleted"}') from gc_test_jobs where job->>'action'='revoke';
+select is(public.gc_status('a1000000-0000-4000-8000-000000000002')#>>'{connection,status}','disconnected','revocation finishes disconnect');
+reset role;
+select is((select count(*) from app_private.google_calendar_credentials where connection_id in(select id from public.google_calendar_connections where user_id='a1000000-0000-4000-8000-000000000002')),0::bigint,'revocation deletes encrypted credentials');
+select ok((select count(*)>0 from public.audit_log where action like 'google_calendar.%'),'connection lifecycle is audited');
+
+select is((select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and left(p.proname,3)='gc_' and (has_function_privilege('anon',p.oid,'EXECUTE') or has_function_privilege('authenticated',p.oid,'EXECUTE'))),0::bigint,'all internal RPCs deny both anonymous and authenticated execution');
+set local role authenticated;
+select throws_ok($$select token_cipher from app_private.google_calendar_credentials$$,'42501',null,'browser cannot select encrypted credentials');
+reset role;
+set local role service_role;
+select public.gc_disconnect('a1000000-0000-4000-8000-000000000001',true);
+reset role;
+update public.google_calendar_connections set worker_lease_until=now()-interval '1 second' where user_id='a1000000-0000-4000-8000-000000000001';
+set local role service_role;
+truncate gc_test_jobs;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(10));
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"reconnect","errorCode":"authorization_revoked"}') from gc_test_jobs;
+select is(public.gc_status('a1000000-0000-4000-8000-000000000001')#>>'{connection,status}','disconnecting','revoked cleanup preserves disconnect intent');
+select public.gc_disconnect('a1000000-0000-4000-8000-000000000001',false);
+truncate gc_test_jobs;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(10));
+select is((select job->>'action' from gc_test_jobs),'revoke','explicit abandonment of failed cleanup allows revocation');
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"deleted"}') from gc_test_jobs;
+select public.gc_finish_oauth('a1000000-0000-4000-8000-000000000001','a2000000-0000-4000-8000-000000000001','synthetic-token-budget','["https://www.googleapis.com/auth/calendar.app.created"]','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":10}');
+reset role;
+select ok(exists(select 1 from public.outbox_events where gc_connection_id is not null and processed_at is null and not gc_terminal),'unprocessed work exists before budget exhaustion');
+insert into public.google_calendar_targets(connection_id,target_kind,state) select id,'private','creating' from public.google_calendar_connections where user_id='a1000000-0000-4000-8000-000000000001' on conflict do nothing;
+set local role service_role;
+select lives_ok($$select public.gc_repair_targets('a1000000-0000-4000-8000-000000000001')$$,'explicit repair clears uncertain calendar creation');
+select throws_ok($$select public.gc_repair_targets('a1000000-0000-4000-8000-000000000001')$$,'54000',null,'repair has per-user cooldown');
+reset role;
+select is((select count(*) from public.google_calendar_targets t join public.google_calendar_connections c on c.id=t.connection_id where c.user_id='a1000000-0000-4000-8000-000000000001' and t.state='creating'),0::bigint,'repair removes only unresolved destination metadata');
+select is((select count(*) from public.google_calendar_targets where calendar_id='synthetic-calendar@example.test'),1::bigint,'repair preserves confirmed calendar target');
+-- A remotely deleted event must get a fresh ID before retrying the projection.
+set local role service_role;
+truncate gc_test_jobs;
+do $$ declare candidate jsonb; i integer; begin
+ for i in 1..10 loop
+  candidate:=public.gc_claim_jobs(1)->0;
+  exit when candidate is null;
+  if candidate->>'action'='upsert' then insert into gc_test_jobs values(candidate); exit; end if;
+  perform public.gc_finish_job((candidate->>'jobId')::uuid,(candidate->>'leaseToken')::uuid,'{"status":"deleted"}');
+ end loop;
+end; $$;
+select is((select count(*) from gc_test_jobs),1::bigint,'external deletion scenario has live upsert claim');
+reset role;
+truncate gc_test_old_ids;
+insert into gc_test_old_ids select id,event_id from public.task_calendar_links where id in(select gc_link_id from public.outbox_events where id in(select (job->>'jobId')::uuid from gc_test_jobs));
+update public.task_calendar_links set etag='stale-remote-etag' where id in(select id from gc_test_old_ids);
+set local role service_role;
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"retry","errorCode":"remote_event_deleted"}') from gc_test_jobs;
+reset role;
+select ok((select bool_and(l.event_id<>old.event_id and l.etag is null) from public.task_calendar_links l join gc_test_old_ids old on old.id=l.id),'confirmed remote event deletion rotates ID and clears stale etag');
+select ok((select bool_and(not gc_terminal and available_at>now()) from public.outbox_events where id in(select (job->>'jobId')::uuid from gc_test_jobs)),'remote event deletion keeps bounded retry and backoff');
+-- A ready calendar can be reset only after a confirmed remote-calendar failure.
+update public.outbox_events set available_at=now() where id in(select (job->>'jobId')::uuid from gc_test_jobs);
+set local role service_role;
+truncate gc_test_jobs;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(1));
+select public.gc_set_target((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'synthetic-removed-calendar@example.test') from gc_test_jobs;
+select public.gc_finish_job((job->>'jobId')::uuid,(job->>'leaseToken')::uuid,'{"status":"failed","errorCode":"remote_calendar_deleted"}') from gc_test_jobs;
+reset role;
+update public.google_calendar_connections set last_repair_at=now()-interval '3 minutes' where user_id='a1000000-0000-4000-8000-000000000001';
+set local role service_role;
+select lives_ok($$select public.gc_repair_targets('a1000000-0000-4000-8000-000000000001')$$,'explicit repair resets ready target after confirmed remote deletion');
+reset role;
+select is((select count(*) from public.google_calendar_targets where calendar_id='synthetic-removed-calendar@example.test'),0::bigint,'confirmed missing calendar metadata is removed');
+select ok(not exists(select 1 from public.task_calendar_links l join public.google_calendar_connections c on c.id=l.connection_id where c.user_id='a1000000-0000-4000-8000-000000000001' and l.target_kind='private' and l.etag is not null),'calendar repair clears etags for all its task projections');
+-- Daily reconciliation visits already exported links, not unexported historic tasks.
+update public.outbox_events set processed_at=now(),gc_terminal=false where gc_connection_id is not null;
+update public.task_calendar_links set sync_status='synced';
+update public.google_calendar_connections set last_reconciled_at=now()-interval '25 hours',worker_lease=null,worker_lease_until=null where user_id='a1000000-0000-4000-8000-000000000001';
+insert into public.tasks(id,household_id,owner_user_id,created_by,title,due_at,idempotency_key,visibility) values('a3000000-0000-4000-8000-000000000004','a2000000-0000-4000-8000-000000000001',null,'a1000000-0000-4000-8000-000000000001','Histórica não consentida',null,'a4000000-0000-4000-8000-000000000004','household');
+-- No trigger/export: simulate a historic row predating consent by temporarily disabling export preference.
+update public.google_calendar_connections set export_household=false where user_id='a1000000-0000-4000-8000-000000000001';
+update public.tasks set due_at=now()-interval '30 days' where id='a3000000-0000-4000-8000-000000000004';
+update public.google_calendar_connections set export_household=true where user_id='a1000000-0000-4000-8000-000000000001';
+set local role service_role;
+truncate gc_test_jobs;
+insert into gc_test_jobs select value from jsonb_array_elements(public.gc_claim_jobs(1));
+select is((select count(*) from gc_test_jobs),1::bigint,'daily reconciliation produces work for exported projection');
+reset role;
+select ok(exists(select 1 from public.outbox_events where gc_connection_id is not null and processed_at is null),'daily reconciliation enqueues existing synced links');
+select is((select count(*) from public.task_calendar_links where task_id='a3000000-0000-4000-8000-000000000004'),0::bigint,'reconciliation does not backfill unconsented historic task');
+select ok((select last_reconciled_at=now() from public.google_calendar_connections where user_id='a1000000-0000-4000-8000-000000000001'),'daily reconciliation records its interval boundary');
+update app_private.google_calendar_budget set claims=2880 where day=(now() at time zone 'UTC')::date;
+set local role service_role;
+select is(jsonb_array_length(public.gc_claim_jobs(10)),0,'daily worker budget stops new claims');
+reset role;
+select * from finish();
+rollback;

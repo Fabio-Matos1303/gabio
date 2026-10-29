@@ -1865,3 +1865,50 @@ fieldset.task-actions:disabled {
   outline: 3px solid #b5c8bb;
   outline-offset: 2px;
 }
+
+.google-calendar-settings {
+  min-width: 0;
+}
+.google-calendar-settings fieldset {
+  min-width: 0;
+  border: 1px solid var(--line, #d7ded8);
+  border-radius: 12px;
+  padding: 12px;
+}
+.google-calendar-settings legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.google-calendar-settings .calendar-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.google-calendar-settings input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  flex: 0 0 auto;
+}
+.google-calendar-settings select {
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+}
+.calendar-authorize {
+  display: inline-flex;
+  margin-block: 12px;
+  align-items: center;
+  min-height: 44px;
+}
+.calendar-disconnect {
+  margin-block: 12px;
+}
+.calendar-disconnect summary {
+  min-height: 44px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  text-decoration: underline;
+}

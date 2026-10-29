@@ -4,7 +4,11 @@
 - Data: 2026-10-28
 
 O primeiro lançamento apresenta Tarefas e Ajustes. A flag pública VITE_TASKS_MVP
-é habilitada por padrão; false reabilita a navegação completa para desenvolvimento.
+é habilitada por padrão; false reabilita a navegação completa somente no servidor
+de desenvolvimento. Builds de produção mantêm Tarefas e Ajustes mesmo se a
+variável estiver definida como false. A seção Google Agenda é acrescentada em
+Ajustes pelo ADR-011 e pode ser ocultada com VITE_GOOGLE_CALENDAR_ENABLED=false;
+sua ativação é controlada no servidor.
 A flag controla apresentação e não altera autorização.
 
 A última leitura autorizada de tarefas é guardada no armazenamento local do

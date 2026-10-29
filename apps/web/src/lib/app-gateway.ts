@@ -1,4 +1,9 @@
 import type {
+  GoogleCalendarConnect,
+  GoogleCalendarPreferences,
+  GoogleCalendarStatus,
+} from "./google-calendar.js";
+import type {
   FinanceCommandConfirmation,
   FinanceCommandProposal,
   FinanceCommandReceipt,
@@ -130,6 +135,17 @@ export interface AppGateway {
   getTelegramConnection(): Promise<TelegramConnection | null>;
   requestTelegramPairing(): Promise<TelegramPairing>;
   revokeTelegramConnection(): Promise<void>;
+  getGoogleCalendarStatus(): Promise<GoogleCalendarStatus>;
+  connectGoogleCalendar(
+    preferences: GoogleCalendarConnect,
+  ): Promise<{ authorizationUrl: string }>;
+  saveGoogleCalendarPreferences(
+    preferences: GoogleCalendarPreferences,
+  ): Promise<void>;
+  completeGoogleCalendar(ticket: string): Promise<void>;
+  repairGoogleCalendar(): Promise<void>;
+  syncGoogleCalendar(): Promise<void>;
+  disconnectGoogleCalendar(removeEvents: boolean): Promise<void>;
   listTasks(): Promise<Task[]>;
   listCalendarEvents(): Promise<CalendarEvent[]>;
   executeTaskCommand(command: TaskGatewayCommand): Promise<TaskCommandReceipt>;
