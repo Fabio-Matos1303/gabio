@@ -1,4 +1,13 @@
 import {
+  googleCalendarConnectSchema,
+  googleCalendarPreferencesSchema,
+  googleCalendarStatusSchema,
+  googleAuthorizationSchema,
+  googleCalendarOkSchema,
+  type GoogleCalendarConnect,
+  type GoogleCalendarPreferences,
+} from "./google-calendar.js";
+import {
   financeCommandConfirmationSchema,
   financeCommandProposalSchema,
   financeCommandReceiptSchema,
@@ -351,6 +360,74 @@ export class SupabaseGateway implements AppGateway {
       new_timezone: timezone,
     });
     if (error) throw friendlyError();
+  }
+
+  private async calendarAction(body: Record<string, unknown>) {
+    const { data, error } = await this.configuredClient().functions.invoke(
+      "google-calendar",
+      { body, timeout: 15000 },
+    );
+    if (error)
+      throw new GatewayError(
+        "Não foi possível acessar o Google Agenda. Tente novamente.",
+      );
+    return data as unknown;
+  }
+
+  async getGoogleCalendarStatus() {
+    return googleCalendarStatusSchema.parse(
+      await this.calendarAction({ action: "status" }),
+    );
+  }
+
+  async connectGoogleCalendar(preferences: GoogleCalendarConnect) {
+    const validated = googleCalendarConnectSchema.parse(preferences);
+    return googleAuthorizationSchema.parse(
+      await this.calendarAction({ action: "connect", ...validated }),
+    );
+  }
+
+  async saveGoogleCalendarPreferences(preferences: GoogleCalendarPreferences) {
+    googleCalendarOkSchema.parse(
+      await this.calendarAction({
+        action: "preferences",
+        ...googleCalendarPreferencesSchema.parse(preferences),
+      }),
+    );
+  }
+
+  async completeGoogleCalendar(ticket: string) {
+    googleCalendarOkSchema.parse(
+      await this.calendarAction({
+        action: "complete",
+        ticket: z
+          .string()
+          .regex(/^[A-Za-z0-9_-]{43}$/)
+          .parse(ticket),
+      }),
+    );
+  }
+
+  async repairGoogleCalendar() {
+    googleCalendarOkSchema.parse(
+      await this.calendarAction({
+        action: "repair",
+        confirmCreateNewCalendars: true,
+      }),
+    );
+  }
+
+  async syncGoogleCalendar() {
+    googleCalendarOkSchema.parse(await this.calendarAction({ action: "sync" }));
+  }
+
+  async disconnectGoogleCalendar(removeEvents: boolean) {
+    googleCalendarOkSchema.parse(
+      await this.calendarAction({
+        action: "disconnect",
+        removeEvents: z.boolean().parse(removeEvents),
+      }),
+    );
   }
 
   async getTelegramConnection(): Promise<TelegramConnection | null> {

@@ -1,3 +1,4 @@
+import { GoogleCalendarSettings } from "./GoogleCalendarSettings.js";
 import {
   taskCreateCommandSchema,
   taskUpdateCommandSchema,
@@ -37,7 +38,8 @@ import {
 
 type AppProps = { gateway?: AppGateway };
 type Notice = { kind: "success" | "error"; text: string } | null;
-const isTaskMvp = () => import.meta.env.VITE_TASKS_MVP !== "false";
+const isTaskMvp = () =>
+  !import.meta.env.DEV || import.meta.env.VITE_TASKS_MVP !== "false";
 type DashboardPage = "home" | "tasks" | "finance" | "settings";
 
 function dashboardPageFromHash(hash: string): DashboardPage {
@@ -1233,7 +1235,11 @@ function Dashboard({
   return (
     <main className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#inicio" aria-label="Gabio, início">
+        <a
+          className="brand"
+          href={taskMvp ? "#tarefas" : "#inicio"}
+          aria-label={taskMvp ? "Gabio, tarefas" : "Gabio, início"}
+        >
           <span className="brand-mark" aria-hidden="true">
             G
           </span>
@@ -1337,8 +1343,11 @@ function Dashboard({
                 </button>
               </form>
             </article>
+            {import.meta.env.VITE_GOOGLE_CALENDAR_ENABLED !== "false" && (
+              <GoogleCalendarSettings gateway={gateway} />
+            )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: tasks-mvp-2026.10.29.1</p>
+            <p className="muted">Versão: tasks-google-calendar-2026.10.29.1</p>
           </section>
         </div>
       )}

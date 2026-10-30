@@ -84,6 +84,15 @@ function gatewayWith(
     acceptInvitation: vi.fn().mockResolvedValue(undefined),
     inviteMember: vi.fn().mockResolvedValue(undefined),
     updateProfile: vi.fn().mockResolvedValue(undefined),
+    getGoogleCalendarStatus: async () => ({ enabled: false, connection: null }),
+    connectGoogleCalendar: async () => {
+      throw new Error("Integração indisponível");
+    },
+    saveGoogleCalendarPreferences: async () => {},
+    completeGoogleCalendar: async () => {},
+    repairGoogleCalendar: async () => {},
+    syncGoogleCalendar: async () => {},
+    disconnectGoogleCalendar: async () => {},
     getTelegramConnection: vi.fn().mockResolvedValue(null),
     requestTelegramPairing: vi.fn().mockResolvedValue({
       code: "a".repeat(48),
@@ -263,6 +272,42 @@ describe("App", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each(["#inicio", "#financas", "#tarefas"])(
+    "keeps production on the task board at %s even with unfinished modules enabled",
+    async (hash) => {
+      vi.stubEnv("DEV", false);
+      vi.stubEnv("VITE_TASKS_MVP", "false");
+      vi.stubEnv("VITE_GOOGLE_CALENDAR_ENABLED", "true");
+      window.history.replaceState({}, "", `/${hash}`);
+      render(<App gateway={gatewayWith()} />);
+      expect(
+        await screen.findByRole("heading", { name: "Tarefas" }),
+      ).toBeInTheDocument();
+      for (const name of ["A fazer", "Em andamento", "Concluídas"]) {
+        expect(screen.getByRole("heading", { name })).toBeInTheDocument();
+      }
+      expect(
+        screen.queryByRole("link", { name: "Finanças" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("link", { name: "Início" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "Gabio, tarefas" }),
+      ).toHaveAttribute("href", "#tarefas");
+      fireEvent.click(screen.getByRole("link", { name: "Ajustes" }));
+      expect(
+        await screen.findByLabelText("Nome de exibição"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "Visão da casa" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Conectar Telegram" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it("edits a task with its loaded version and completes it directly", async () => {
     window.history.replaceState({}, "", "/#tarefas");
     const gateway = gatewayWith();
@@ -308,6 +353,7 @@ describe("App", () => {
   });
 
   beforeEach(() => {
+    vi.stubEnv("DEV", true);
     vi.stubEnv("VITE_TASKS_MVP", "false");
     localStorage.clear();
     window.history.replaceState({}, "", "/");
