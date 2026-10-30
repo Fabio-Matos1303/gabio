@@ -1215,6 +1215,7 @@ function Dashboard({
   const [page, setPage] = useState<DashboardPage>(() =>
     dashboardPageFromHash(window.location.hash),
   );
+  const [visitedPages, setVisitedPages] = useState(() => new Set([page]));
   const taskMvp = isTaskMvp();
   const currentDisplayName =
     household.members.find((member) => member.userId === user.id)
@@ -1231,7 +1232,9 @@ function Dashboard({
   );
   useEffect(() => {
     const updatePage = () => {
-      setPage(dashboardPageFromHash(window.location.hash));
+      const nextPage = dashboardPageFromHash(window.location.hash);
+      setVisitedPages((visited) => new Set([...visited, nextPage]));
+      setPage(nextPage);
       window.scrollTo({ top: 0, behavior: "instant" });
     };
     window.addEventListener("hashchange", updatePage);
@@ -1319,8 +1322,8 @@ function Dashboard({
           </button>
         </div>
       </header>
-      {page === "home" && (
-        <>
+      {visitedPages.has("home") && (
+        <div hidden={page !== "home"}>
           <section className="home-intro" id="inicio">
             <div>
               <p className="eyebrow">{today}</p>
@@ -1330,20 +1333,20 @@ function Dashboard({
           </section>
           <HomeInsights gateway={gateway} />
           <HomeCalendar gateway={gateway} />
-        </>
+        </div>
       )}
-      {page === "tasks" && (
-        <div className="module-page">
+      {visitedPages.has("tasks") && (
+        <div className="module-page" hidden={page !== "tasks"}>
           <TaskPanel gateway={gateway} user={user} household={household} />
         </div>
       )}
-      {page === "finance" && (
-        <div className="module-page">
+      {visitedPages.has("finance") && (
+        <div className="module-page" hidden={page !== "finance"}>
           <FinancePanel gateway={gateway} />
         </div>
       )}
-      {page === "settings" && (
-        <div className="module-page">
+      {visitedPages.has("settings") && (
+        <div className="module-page" hidden={page !== "settings"}>
           <NoticeBox notice={notice} />
           <section
             className="settings-grid"
@@ -1396,7 +1399,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: household-invitation-2026.10.30.1</p>
+            <p className="muted">Versão: navigation-stability-2026.10.30.1</p>
           </section>
         </div>
       )}
@@ -1489,6 +1492,7 @@ export function App({ gateway = defaultGateway }: AppProps) {
   const [household, setHousehold] = useState<HouseholdContext | null>(null);
   const [recovery, setRecovery] = useState(false);
   const loadGeneration = useRef(0);
+  const sessionUserId = useRef<string | null>(null);
   const [invitationId, setInvitationId] = useState(invitationIdFromUrl);
 
   const reload = useCallback(async () => {
@@ -1497,6 +1501,7 @@ export function App({ gateway = defaultGateway }: AppProps) {
     try {
       const currentUser = await gateway.getSession();
       if (generation !== loadGeneration.current) return;
+      sessionUserId.current = currentUser?.id ?? null;
       setUser(currentUser);
       setHousehold(null);
       if (!currentUser) return;
@@ -1507,6 +1512,7 @@ export function App({ gateway = defaultGateway }: AppProps) {
       }
     } catch {
       if (generation === loadGeneration.current) {
+        sessionUserId.current = null;
         setUser(null);
         setHousehold(null);
       }
@@ -1523,13 +1529,25 @@ export function App({ gateway = defaultGateway }: AppProps) {
     void reload();
     const unsubscribe = gateway.onAuthStateChange(
       ({ event, user: nextUser }) => {
-        if (event === "TOKEN_REFRESHED") return;
+        if (
+          event === "TOKEN_REFRESHED" &&
+          nextUser?.id === sessionUserId.current
+        )
+          return;
+        // Supabase can confirm the same session when the window regains focus.
+        const preserveScreen =
+          event === "SIGNED_IN" &&
+          nextUser !== null &&
+          nextUser.id === sessionUserId.current;
+        sessionUserId.current = nextUser?.id ?? null;
         if (event === "SIGNED_OUT") clearTaskSnapshots();
         const generation = ++loadGeneration.current;
-        setLoading(true);
-        setRecovery(event === "PASSWORD_RECOVERY");
+        if (!preserveScreen) {
+          setLoading(true);
+          setRecovery(event === "PASSWORD_RECOVERY");
+          setHousehold(null);
+        }
         setUser(nextUser);
-        setHousehold(null);
         if (nextUser) {
           void gateway
             .loadHousehold()
@@ -1613,6 +1631,7 @@ export function App({ gateway = defaultGateway }: AppProps) {
     );
   return (
     <Dashboard
+      key={`${user.id}:${household.id}`}
       gateway={gateway}
       user={user}
       household={household}

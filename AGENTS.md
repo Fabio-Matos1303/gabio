@@ -18,5 +18,7 @@ Este repositório contém um sistema residencial com dados pessoais e financeiro
 - Deploy, migration destrutiva, mudança de permissões, novo escopo OAuth e novo custo exigem aprovação humana.
 - Preserve alterações existentes e não misture refactors sem relação com a demanda.
 - Antes de concluir, execute os checks proporcionais e informe exatamente o que foi ou não validado.
+- Uma alteração só está concluída após ser publicada em produção e ter a versão e a disponibilidade verificadas na URL de produção. Código local, commit, build e preview são etapas intermediárias.
+- Conduza a entrega até produção quando a publicação estiver autorizada no pedido ou na conversa. Se faltar autorização, acesso ou houver falha de publicação, informe o impedimento e mantenha a alteração como pendente de produção; não a declare concluída.
 
 Interface e mensagens para o usuário devem usar português brasileiro. Código, nomes técnicos e commits usam inglês.

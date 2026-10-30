@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -132,6 +133,115 @@ function gatewayWith(
 }
 
 describe("App", () => {
+  it("preserves the task draft while the same session is revalidated on focus", async () => {
+    let authListener: ((state: AuthState) => void) | undefined;
+    const gateway = gatewayWith();
+    gateway.onAuthStateChange = vi.fn((listener) => {
+      authListener = listener;
+      return vi.fn();
+    });
+    window.history.replaceState({}, "", "/#tarefas");
+    render(<App gateway={gateway} />);
+    const title = await screen.findByLabelText("Título da tarefa");
+    fireEvent.change(title, { target: { value: "Rascunho sintético" } });
+    const revalidation = deferred<HouseholdContext | null>();
+    vi.mocked(gateway.loadHousehold).mockReturnValueOnce(revalidation.promise);
+
+    act(() => authListener?.({ event: "SIGNED_IN", user }));
+    expect(title).toBeVisible();
+    expect(screen.queryByText("Carregando sua casa…")).not.toBeInTheDocument();
+    await act(async () => revalidation.resolve(household));
+    expect(screen.getByLabelText("Título da tarefa")).toBe(title);
+    expect(title).toHaveValue("Rascunho sintético");
+    expect(gateway.loadHousehold).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the task page and avoids fetching again when returning from settings", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    render(<App gateway={gateway} />);
+    const title = await screen.findByLabelText("Título da tarefa");
+    await waitFor(() => expect(gateway.listTasks).toHaveBeenCalledTimes(1));
+    fireEvent.change(title, { target: { value: "Rascunho de navegação" } });
+    fireEvent.click(screen.getByRole("link", { name: "Ajustes" }));
+    await waitFor(() => expect(title).not.toBeVisible());
+    fireEvent.click(screen.getByRole("link", { name: "Tarefas" }));
+    await waitFor(() => expect(title).toBeVisible());
+    expect(screen.getByLabelText("Título da tarefa")).toBe(title);
+    expect(title).toHaveValue("Rascunho de navegação");
+    expect(gateway.listTasks).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes preserved pages on sign out and ignores late revalidation results", async () => {
+    let authListener: ((state: AuthState) => void) | undefined;
+    const gateway = gatewayWith();
+    gateway.onAuthStateChange = vi.fn((listener) => {
+      authListener = listener;
+      return vi.fn();
+    });
+    window.history.replaceState({}, "", "/#tarefas");
+    render(<App gateway={gateway} />);
+    await screen.findByLabelText("Título da tarefa");
+    const revalidation = deferred<HouseholdContext | null>();
+    vi.mocked(gateway.loadHousehold).mockReturnValueOnce(revalidation.promise);
+    act(() => authListener?.({ event: "SIGNED_IN", user }));
+    act(() => authListener?.({ event: "SIGNED_OUT", user: null }));
+    await act(async () => revalidation.resolve(household));
+    expect(screen.queryByLabelText("Título da tarefa")).not.toBeInTheDocument();
+    expect(screen.queryByText(household.name)).not.toBeInTheDocument();
+  });
+
+  it.each(["missing", "failed"])(
+    "removes preserved pages when household validation is %s",
+    async (result) => {
+      let authListener: ((state: AuthState) => void) | undefined;
+      const gateway = gatewayWith();
+      gateway.onAuthStateChange = vi.fn((listener) => {
+        authListener = listener;
+        return vi.fn();
+      });
+      window.history.replaceState({}, "", "/#tarefas");
+      render(<App gateway={gateway} />);
+      await screen.findByLabelText("Título da tarefa");
+      if (result === "failed") {
+        vi.mocked(gateway.loadHousehold).mockRejectedValueOnce(
+          new Error("Synthetic failure"),
+        );
+      } else {
+        vi.mocked(gateway.loadHousehold).mockResolvedValueOnce(null);
+      }
+      await act(async () => authListener?.({ event: "SIGNED_IN", user }));
+      expect(
+        screen.queryByLabelText("Título da tarefa"),
+      ).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole("heading", { name: "Crie sua residência" }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("discards drafts when the same user changes household", async () => {
+    let authListener: ((state: AuthState) => void) | undefined;
+    const gateway = gatewayWith();
+    gateway.onAuthStateChange = vi.fn((listener) => {
+      authListener = listener;
+      return vi.fn();
+    });
+    window.history.replaceState({}, "", "/#tarefas");
+    render(<App gateway={gateway} />);
+    const title = await screen.findByLabelText("Título da tarefa");
+    fireEvent.change(title, { target: { value: "Rascunho da casa anterior" } });
+    vi.mocked(gateway.loadHousehold).mockResolvedValueOnce({
+      ...household,
+      id: "20000000-0000-4000-8000-000000000002",
+      name: "Casa sintética B",
+    });
+    await act(async () => authListener?.({ event: "SIGNED_IN", user }));
+    expect(screen.getByLabelText("Título da tarefa")).not.toBe(title);
+    expect(screen.getByLabelText("Título da tarefa")).toHaveValue("");
+    expect(screen.getByText("Casa sintética B")).toBeInTheDocument();
+  });
+
   it("recovers a pending invitation when the email redirect loses join", async () => {
     const invitationId = "30000000-0000-4000-8000-000000000099";
     const gateway = gatewayWith({ household: null });
