@@ -1396,7 +1396,9 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: household-invitation-2026.10.30.1</p>
+            <p className="muted">
+              Versão: tasks-google-calendar-ui-2026.10.30.1
+            </p>
           </section>
         </div>
       )}
