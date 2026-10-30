@@ -159,15 +159,22 @@ describe("Google Calendar settings", () => {
       connection: connected,
     });
     render(<GoogleCalendarSettings gateway={api} />);
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Salvar preferências da agenda",
-      }),
-    );
+    const save = await screen.findByRole("button", {
+      name: "Salvar preferências da agenda",
+    });
+    expect(save).toBeDisabled();
+    fireEvent.submit(save.closest("form")!);
+    expect(api.saveGoogleCalendarPreferences).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText("Minhas tarefas privadas"));
+    expect(screen.getByText("Alterações não salvas")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sincronizar tarefas" }),
+    ).toBeDisabled();
+    fireEvent.click(save);
     await waitFor(() =>
       expect(api.saveGoogleCalendarPreferences).toHaveBeenCalledWith({
         exportHousehold: true,
-        exportPrivate: false,
+        exportPrivate: true,
         reminderMinutes: null,
       }),
     );
@@ -195,6 +202,7 @@ describe("Google Calendar settings", () => {
     await screen.findByRole("button", {
       name: "Salvar preferências da agenda",
     });
+    fireEvent.click(screen.getByText("Gerenciar conexão"));
     fireEvent.click(
       screen.getByLabelText("Remover os eventos do Gabio antes de desconectar"),
     );
@@ -278,6 +286,8 @@ describe("Google Calendar settings", () => {
       connection: { ...connected, status: "disconnecting", failedCount: 1 },
     });
     render(<GoogleCalendarSettings gateway={api} />);
+    await screen.findByText("Gerenciar conexão");
+    fireEvent.click(screen.getByText("Gerenciar conexão"));
     const button = await screen.findByRole("button", {
       name: "Interromper limpeza e desconectar",
     });
@@ -292,5 +302,79 @@ describe("Google Calendar settings", () => {
       expect(api.disconnectGoogleCalendar).toHaveBeenCalledWith(false),
     );
     expect(await screen.findByText(/Limpeza interrompida/)).toBeInTheDocument();
+  });
+  it("keeps a dirty preference draft after status refresh or failed save", async () => {
+    const api = gateway();
+    api.getGoogleCalendarStatus.mockResolvedValue({
+      enabled: true,
+      connection: connected,
+    });
+    api.saveGoogleCalendarPreferences.mockRejectedValue(new Error("network"));
+    render(<GoogleCalendarSettings gateway={api} />);
+    const save = await screen.findByRole("button", {
+      name: "Salvar preferências da agenda",
+    });
+    fireEvent.click(screen.getByLabelText("Minhas tarefas privadas"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Atualizar estado da agenda" }),
+    );
+    await waitFor(() =>
+      expect(api.getGoogleCalendarStatus).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(screen.getByLabelText("Minhas tarefas privadas")).toBeChecked();
+    fireEvent.click(save);
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByText("Alterações não salvas")).toBeInTheDocument();
+    expect(save).toBeEnabled();
+  });
+  it("hydrates existing preferences after a failed initial load and refreshes a clean form", async () => {
+    const api = gateway();
+    api.getGoogleCalendarStatus
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValue({
+        enabled: true,
+        connection: {
+          ...connected,
+          exportHousehold: false,
+          exportPrivate: true,
+          reminderMinutes: 60,
+        },
+      });
+    render(<GoogleCalendarSettings gateway={api} />);
+    await screen.findByRole("alert");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Atualizar estado da agenda" }),
+    );
+    const save = await screen.findByRole("button", {
+      name: "Salvar preferências da agenda",
+    });
+    expect(screen.getByLabelText("Minhas tarefas privadas")).toBeChecked();
+    expect(
+      screen.getByLabelText("Tarefas compartilhadas da casa"),
+    ).not.toBeChecked();
+    expect(
+      screen.getByLabelText("Lembrete de prazo", { exact: false }),
+    ).toHaveValue("60");
+    expect(save).toBeDisabled();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Atualizar estado da agenda" }),
+      ).toBeEnabled(),
+    );
+    api.getGoogleCalendarStatus.mockResolvedValue({
+      enabled: true,
+      connection: { ...connected, reminderMinutes: 15 },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Atualizar estado da agenda" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText("Lembrete de prazo", { exact: false }),
+      ).toHaveValue("15"),
+    );
+    expect(screen.getByLabelText("Minhas tarefas privadas")).not.toBeChecked();
+    expect(save).toBeDisabled();
   });
 });
