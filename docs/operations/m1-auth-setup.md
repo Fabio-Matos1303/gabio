@@ -46,3 +46,26 @@ Deploy e configuração de Auth exigem aprovação humana. Antes do deploy:
 - Um novo convite para o mesmo e-mail invalida o anterior.
 - Sessões podem ser encerradas pelo usuário e revogadas administrativamente.
 - Nenhuma exclusão de residência ou membro é oferecida no M1.
+
+## Correção de convite sem parâmetro de retorno
+
+A migration incremental `202610290003_recover_household_invitation.sql` adiciona
+recuperação do convite da própria identidade confirmada e bloqueio de criação
+indevida de residência. Publicá-la antes do frontend, após aprovação humana.
+Consultar o ADR-012 para limites, implantação e regularização de contas antigas.
+O frontend exige consulta bem-sucedida antes de oferecer criação sem link.
+Falhas e convites ambíguos mantêm o fluxo bloqueado; usar o link original ou
+solicitar um novo convite válido, sem excluir a conta.
+
+### Publicação household-invitation-2026.10.30.1
+
+- Aplicação da migration pelo editor SQL autorizada pelo usuário, que informou
+  `Success. No rows returned`. O resultado não foi verificado independentemente
+  no painel por limitação do controle do navegador.
+- A aplicação manual do arquivo não registra automaticamente a versão em
+  `supabase_migrations.schema_migrations`. Conciliar esse histórico antes de
+  qualquer futura execução da CLI; não executar `db push` indiscriminadamente.
+- Validação local: 30 testes de interface, 20 testes novos de recuperação,
+  26 de autenticação, lint, TypeScript e build. Revisão de segurança independente
+  sem achados bloqueadores.
+- Esta publicação não transfere contas ou registros existentes entre residências.

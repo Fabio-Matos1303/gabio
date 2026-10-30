@@ -60,6 +60,7 @@ const gateway: AppGateway = {
   sendPasswordReset: unavailable,
   updatePassword: unavailable,
   loadHousehold: async () => house,
+  loadPendingInvitation: async () => null,
   createHousehold: unavailable,
   acceptInvitation: unavailable,
   inviteMember: unavailable,
