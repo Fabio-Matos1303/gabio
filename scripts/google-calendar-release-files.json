@@ -1,4 +1,5 @@
 [
+  ".node-version",
   ".env.example",
   ".github/workflows/ci.yml",
   "apps/web/public/version.json",
