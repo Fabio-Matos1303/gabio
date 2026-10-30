@@ -332,6 +332,14 @@ export class SupabaseGateway implements AppGateway {
     if (error) throw friendlyError();
   }
 
+  async loadPendingInvitation(): Promise<string | null> {
+    const { data, error } = await this.configuredClient().rpc(
+      "get_my_pending_household_invitation",
+    );
+    if (error) throw friendlyError();
+    return z.string().uuid().nullable().parse(data);
+  }
+
   async acceptInvitation(invitationId: string) {
     const { error } = await this.configuredClient().rpc(
       "accept_pending_household_invitation",

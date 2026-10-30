@@ -128,6 +128,7 @@ export interface AppGateway {
   sendPasswordReset(email: string, redirectTo: string): Promise<void>;
   updatePassword(password: string): Promise<void>;
   loadHousehold(): Promise<HouseholdContext | null>;
+  loadPendingInvitation(): Promise<string | null>;
   createHousehold(name: string): Promise<void>;
   acceptInvitation(invitationId: string): Promise<void>;
   inviteMember(householdId: string, email: string): Promise<void>;

@@ -275,15 +275,41 @@ function RecoveryPanel({
 
 function OnboardingPanel({
   gateway,
-  invitationId,
+  invitationId: linkedInvitationId,
   onReady,
 }: {
   gateway: AppGateway;
   invitationId: string | null;
   onReady: () => Promise<void>;
 }) {
+  const [invitationId, setInvitationId] = useState(linkedInvitationId);
+  const [checkingInvitation, setCheckingInvitation] =
+    useState(!linkedInvitationId);
+  const [invitationLookupFailed, setInvitationLookupFailed] = useState(false);
+  const [lookupAttempt, setLookupAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+
+  useEffect(() => {
+    if (linkedInvitationId) return;
+    let active = true;
+    setCheckingInvitation(true);
+    setInvitationLookupFailed(false);
+    void gateway
+      .loadPendingInvitation()
+      .then((pendingId) => {
+        if (active) setInvitationId(pendingId);
+      })
+      .catch(() => {
+        if (active) setInvitationLookupFailed(true);
+      })
+      .finally(() => {
+        if (active) setCheckingInvitation(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [gateway, linkedInvitationId, lookupAttempt]);
 
   async function createHousehold(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -334,14 +360,37 @@ function OnboardingPanel({
     <main className="center-shell">
       <section className="auth-card">
         <p className="eyebrow">Configuração inicial</p>
-        <h1>{invitationId ? "Entrar na residência" : "Crie sua residência"}</h1>
+        <h1>
+          {checkingInvitation || invitationLookupFailed
+            ? "Verificar convite"
+            : invitationId
+              ? "Entrar na residência"
+              : "Crie sua residência"}
+        </h1>
         <p className="muted">
-          {invitationId
-            ? "Confirme para entrar com a identidade vinculada a este convite."
-            : "Você será o proprietário e poderá convidar a segunda pessoa depois."}
+          {checkingInvitation || invitationLookupFailed
+            ? "Vamos conferir se você recebeu um convite antes de criar uma residência."
+            : invitationId
+              ? "Confirme para entrar com a identidade vinculada a este convite."
+              : "Você será o proprietário e poderá convidar a segunda pessoa depois."}
         </p>
         <NoticeBox notice={notice} />
-        {invitationId ? (
+        {checkingInvitation ? (
+          <p role="status">Verificando seu convite…</p>
+        ) : invitationLookupFailed ? (
+          <>
+            <p role="alert">
+              Não foi possível verificar seu convite. Tente novamente antes de
+              continuar ou abra o link original do e-mail.
+            </p>
+            <button
+              className="primary-button"
+              onClick={() => setLookupAttempt((attempt) => attempt + 1)}
+            >
+              Tentar novamente
+            </button>
+          </>
+        ) : invitationId ? (
           <form className="stack-form" onSubmit={acceptInvitation}>
             <label>
               Crie sua senha
@@ -1347,7 +1396,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: tasks-google-calendar-2026.10.29.1</p>
+            <p className="muted">Versão: household-invitation-2026.10.30.1</p>
           </section>
         </div>
       )}
@@ -1379,13 +1428,68 @@ function Dashboard({
   );
 }
 
+function ExistingHouseholdInvitation({
+  gateway,
+  invitationId,
+  onContinue,
+}: {
+  gateway: AppGateway;
+  invitationId: string;
+  onContinue: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <main className="center-shell">
+      <section className="auth-card">
+        <h1>Você já pertence a uma residência</h1>
+        <p>
+          Este convite não transfere sua conta nem suas tarefas para outra casa.
+        </p>
+        {failed && (
+          <p role="alert">
+            Não foi possível aceitar o convite. Se a residência atual foi criada
+            por engano, o vínculo precisa ser corrigido com suporte, preservando
+            seus dados.
+          </p>
+        )}
+        <button
+          className="primary-button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setFailed(false);
+            try {
+              await gateway.acceptInvitation(invitationId);
+              await onContinue();
+            } catch {
+              setFailed(true);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Verificar convite
+        </button>
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={() => void onContinue()}
+        >
+          Continuar na residência atual
+        </button>
+      </section>
+    </main>
+  );
+}
+
 export function App({ gateway = defaultGateway }: AppProps) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [household, setHousehold] = useState<HouseholdContext | null>(null);
   const [recovery, setRecovery] = useState(false);
   const loadGeneration = useRef(0);
-  const invitationId = useMemo(invitationIdFromUrl, []);
+  const [invitationId, setInvitationId] = useState(invitationIdFromUrl);
 
   const reload = useCallback(async () => {
     const generation = ++loadGeneration.current;
@@ -1452,10 +1556,6 @@ export function App({ gateway = defaultGateway }: AppProps) {
     };
   }, [gateway, reload]);
 
-  useEffect(() => {
-    if (household && invitationId) clearJoinFromUrl();
-  }, [household, invitationId]);
-
   if (!gateway.isConfigured)
     return (
       <main className="center-shell">
@@ -1481,18 +1581,34 @@ export function App({ gateway = defaultGateway }: AppProps) {
         gateway={gateway}
         invitationId={invitationId}
         onComplete={async () => {
+          setInvitationId(null);
           setRecovery(false);
           await reload();
         }}
       />
     );
   if (!user) return <AuthPanel gateway={gateway} />;
+  if (household && invitationId)
+    return (
+      <ExistingHouseholdInvitation
+        gateway={gateway}
+        invitationId={invitationId}
+        onContinue={async () => {
+          clearJoinFromUrl();
+          setInvitationId(null);
+          await reload();
+        }}
+      />
+    );
   if (!household)
     return (
       <OnboardingPanel
         gateway={gateway}
         invitationId={invitationId}
-        onReady={reload}
+        onReady={async () => {
+          setInvitationId(null);
+          await reload();
+        }}
       />
     );
   return (

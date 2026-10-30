@@ -80,6 +80,7 @@ function gatewayWith(
     sendPasswordReset: vi.fn().mockResolvedValue(undefined),
     updatePassword: vi.fn().mockResolvedValue(undefined),
     loadHousehold: vi.fn().mockResolvedValue(currentHousehold),
+    loadPendingInvitation: vi.fn().mockResolvedValue(null),
     createHousehold: vi.fn().mockResolvedValue(undefined),
     acceptInvitation: vi.fn().mockResolvedValue(undefined),
     inviteMember: vi.fn().mockResolvedValue(undefined),
@@ -131,6 +132,92 @@ function gatewayWith(
 }
 
 describe("App", () => {
+  it("recovers a pending invitation when the email redirect loses join", async () => {
+    const invitationId = "30000000-0000-4000-8000-000000000099";
+    const gateway = gatewayWith({ household: null });
+    gateway.loadPendingInvitation = vi.fn().mockResolvedValue(invitationId);
+    render(<App gateway={gateway} />);
+    expect(
+      await screen.findByRole("heading", { name: "Entrar na residência" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Nome da residência"),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Crie sua senha"), {
+      target: { value: "synthetic-password-123" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Definir senha e aceitar" }),
+    );
+    await waitFor(() =>
+      expect(gateway.acceptInvitation).toHaveBeenCalledWith(invitationId),
+    );
+    expect(gateway.createHousehold).not.toHaveBeenCalled();
+  });
+
+  it("blocks bootstrap until invitation lookup completes", async () => {
+    const lookup = deferred<string | null>();
+    const gateway = gatewayWith({ household: null });
+    gateway.loadPendingInvitation = vi.fn().mockReturnValueOnce(lookup.promise);
+    render(<App gateway={gateway} />);
+    expect(
+      await screen.findByText("Verificando seu convite…"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Nome da residência"),
+    ).not.toBeInTheDocument();
+    lookup.resolve(null);
+    expect(
+      await screen.findByLabelText("Nome da residência"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps household creation hidden after invitation lookup failure", async () => {
+    const gateway = gatewayWith({ household: null });
+    gateway.loadPendingInvitation = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(null);
+    render(<App gateway={gateway} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Não foi possível verificar seu convite",
+    );
+    expect(
+      screen.queryByLabelText("Nome da residência"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    expect(
+      await screen.findByLabelText("Nome da residência"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a household conflict instead of silently discarding the invitation", async () => {
+    const invitationId = "30000000-0000-4000-8000-000000000098";
+    window.history.replaceState({}, "", `/?join=${invitationId}`);
+    const gateway = gatewayWith();
+    gateway.acceptInvitation = vi
+      .fn()
+      .mockRejectedValue(new Error("different household"));
+    render(<App gateway={gateway} />);
+    expect(
+      await screen.findByRole("heading", {
+        name: "Você já pertence a uma residência",
+      }),
+    ).toBeInTheDocument();
+    expect(window.location.search).toContain(invitationId);
+    fireEvent.click(screen.getByRole("button", { name: "Verificar convite" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "preservando seus dados",
+    );
+    expect(gateway.createHousehold).not.toHaveBeenCalled();
+    expect(window.location.search).toContain(invitationId);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continuar na residência atual" }),
+    );
+    expect(await screen.findByText("Nossa casa")).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
+
   it("loads tasks and finishes loading under StrictMode effect replay", async () => {
     window.history.replaceState({}, "", "/#tarefas");
     const gateway = gatewayWith();
