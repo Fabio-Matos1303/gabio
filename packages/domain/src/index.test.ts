@@ -74,6 +74,47 @@ describe("canEditResource", () => {
 
 describe("nextRecurrenceDueAt", () => {
   it.each([
+    ["daily", 3, [], "2026-11-02T12:00:00Z", "2026-11-05T12:00:00.000Z"],
+    ["weekly", 2, [1, 3], "2026-11-02T12:00:00Z", "2026-11-04T12:00:00.000Z"],
+    ["weekly", 2, [1, 3], "2026-11-04T12:00:00Z", "2026-11-16T12:00:00.000Z"],
+    ["weekly", 2, [], "2026-11-02T12:00:00Z", "2026-11-16T12:00:00.000Z"],
+    ["monthly", 3, [], "2027-01-31T12:00:00Z", "2027-04-30T12:00:00.000Z"],
+    ["yearly", 1, [], "2028-02-29T12:00:00Z", "2029-02-28T12:00:00.000Z"],
+    ["weekly", 1, [0], "2026-11-02T01:00:00Z", "2026-11-09T01:00:00.000Z"],
+  ] as const)(
+    "advances custom %s interval %s from %s",
+    (frequency, interval, weekdays, start, expected) => {
+      expect(
+        nextRecurrenceDueAt(new Date(start), "custom", {
+          frequency,
+          interval,
+          weekdays: [...weekdays],
+          until: null,
+          timeZone: "America/Bahia",
+        })?.toISOString(),
+      ).toBe(expected);
+    },
+  );
+  it("uses an inclusive local end date and stops beyond it", () => {
+    const rule = {
+      frequency: "daily" as const,
+      interval: 1,
+      weekdays: [],
+      until: "2026-11-08",
+      timeZone: "America/Bahia" as const,
+    };
+    expect(
+      nextRecurrenceDueAt(
+        new Date("2026-11-08T01:00:00Z"),
+        "custom",
+        rule,
+      )?.toISOString(),
+    ).toBe("2026-11-09T01:00:00.000Z");
+    expect(
+      nextRecurrenceDueAt(new Date("2026-11-09T01:00:00Z"), "custom", rule),
+    ).toBeNull();
+  });
+  it.each([
     ["daily", "2026-09-24T10:30:00.000Z"],
     ["weekly", "2026-09-30T10:30:00.000Z"],
   ] as const)("advances a %s recurrence", (recurrence, expected) => {

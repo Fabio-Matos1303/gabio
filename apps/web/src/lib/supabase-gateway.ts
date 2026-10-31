@@ -15,6 +15,8 @@ import {
   taskCommandReceiptSchema,
   taskGatewayCommandSchema,
   taskSchema,
+  taskRecurrenceSchema,
+  taskRecurrenceRuleSchema,
   type TaskGatewayCommand,
   type FinanceGatewayCommand,
   type FinanceCommandConfirmation,
@@ -103,7 +105,8 @@ const taskRowSchema = z
     title: z.string(),
     due_at: z.string().nullable(),
     visibility: z.enum(["household", "private"]),
-    recurrence: z.enum(["none", "daily", "weekly", "monthly"]),
+    recurrence: taskRecurrenceSchema,
+    recurrence_rule: taskRecurrenceRuleSchema.nullable().default(null),
     status: z.enum(["open", "in_progress", "completed", "cancelled"]),
     completed_at: z.string().nullable(),
     version: z.number().int().positive(),
@@ -195,6 +198,7 @@ function parseTaskRow(value: unknown) {
     dueAt: row.due_at,
     visibility: row.visibility,
     recurrence: row.recurrence,
+    recurrenceRule: row.recurrence_rule,
     status: row.status,
     completedAt: row.completed_at,
     version: row.version,
@@ -474,7 +478,7 @@ export class SupabaseGateway implements AppGateway {
     const { data, error } = await this.configuredClient()
       .from("tasks")
       .select(
-        "id, household_id, owner_user_id, created_by, assignee_user_id, title, due_at, visibility, recurrence, status, completed_at, version, created_at, updated_at",
+        "id, household_id, owner_user_id, created_by, assignee_user_id, title, due_at, visibility, recurrence, recurrence_rule, status, completed_at, version, created_at, updated_at",
       )
       .order("created_at", { ascending: false });
     if (error) throw friendlyError();

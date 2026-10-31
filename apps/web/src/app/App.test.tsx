@@ -133,6 +133,72 @@ function gatewayWith(
 }
 
 describe("App", () => {
+  it("rejects inconsistent edited recurrence before enqueuing a command", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.listTasks = vi.fn().mockResolvedValue([makeTask()]);
+    render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    const editor = within(
+      screen.getByRole("region", { name: "Editar tarefa" }),
+    );
+    fireEvent.change(editor.getByLabelText("Prazo"), {
+      target: { value: "2026-11-02T09:00" },
+    });
+    fireEvent.change(editor.getByLabelText("Repetir"), {
+      target: { value: "custom" },
+    });
+    fireEvent.click(editor.getByLabelText("Terça"));
+    fireEvent.click(editor.getByRole("button", { name: "Salvar tarefa" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "o prazo deve corresponder aos dias escolhidos",
+    );
+    expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
+  });
+  it("opens creation in a dialog, retains a cancelled draft and submits selected weekdays", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    render(<App gateway={gateway} />);
+    const quick = await screen.findByLabelText("Título da tarefa");
+    expect(screen.queryByText(/Capture rapidamente/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Última consulta/)).not.toBeInTheDocument();
+    fireEvent.change(quick, { target: { value: "Rotina sintética" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "Nova tarefa" });
+    const form = within(dialog);
+    fireEvent.change(form.getByLabelText("Primeiro prazo"), {
+      target: { value: "2026-11-02T09:00" },
+    });
+    fireEvent.change(form.getByLabelText("Repetir"), {
+      target: { value: "custom" },
+    });
+    fireEvent.change(form.getByLabelText("A cada"), { target: { value: "2" } });
+    fireEvent.click(form.getByLabelText("Segunda"));
+    fireEvent.click(form.getByLabelText("Quarta"));
+    fireEvent.click(form.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(dialog).not.toHaveAttribute("open"));
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    expect(form.getByLabelText("Título")).toHaveValue("Rotina sintética");
+    expect(form.getByLabelText("A cada")).toHaveValue(2);
+    fireEvent.click(form.getByRole("button", { name: "Criar tarefa" }));
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            recurrence: "custom",
+            dueAt: "2026-11-02T12:00:00.000Z",
+            recurrenceRule: expect.objectContaining({
+              interval: 2,
+              weekdays: [1, 3],
+            }),
+          }),
+        }),
+      ),
+    );
+    await waitFor(() => expect(dialog).not.toHaveAttribute("open"));
+    expect(quick).toHaveValue("");
+  });
   it("preserves the task draft while the same session is revalidated on focus", async () => {
     let authListener: ((state: AuthState) => void) | undefined;
     const gateway = gatewayWith();
@@ -385,7 +451,8 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Título da tarefa"), {
       target: { value: "Envio único" },
     });
-    const button = screen.getByRole("button", { name: "Adicionar tarefa" });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    const button = screen.getByRole("button", { name: "Criar tarefa" });
     const form = button.closest("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
@@ -418,6 +485,7 @@ describe("App", () => {
       target: { value: "Confirmada no servidor" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Criar tarefa" }));
     expect(
       await screen.findByText(
         "Alteração confirmada. Não foi possível atualizar a lista; toque em Atualizar tarefas.",
@@ -436,6 +504,7 @@ describe("App", () => {
     const title = await screen.findByLabelText("Título da tarefa");
     fireEvent.change(title, { target: { value: "Tarefa pendente sintética" } });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Criar tarefa" }));
     await waitFor(() => expect(title).toHaveValue(""));
     expect(
       await screen.findByText("Tarefa pendente sintética"),
@@ -918,6 +987,7 @@ describe("App", () => {
       target: { value: "Lavar roupa" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
+    fireEvent.click(screen.getByRole("button", { name: "Criar tarefa" }));
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
         expect.objectContaining({

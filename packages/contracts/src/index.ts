@@ -8,8 +8,71 @@ export const taskRecurrenceSchema = z.enum([
   "daily",
   "weekly",
   "monthly",
+  "custom",
 ]);
 export type TaskRecurrence = z.infer<typeof taskRecurrenceSchema>;
+
+export const taskRecurrenceRuleSchema = z
+  .object({
+    frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
+    interval: z.number().int().min(1).max(365),
+    weekdays: z.array(z.number().int().min(0).max(6)).max(7),
+    until: z.string().date().nullable(),
+    timeZone: z.literal("America/Bahia"),
+  })
+  .strict()
+  .superRefine((rule, context) => {
+    if (
+      new Set(rule.weekdays).size !== rule.weekdays.length ||
+      (rule.frequency !== "weekly" && rule.weekdays.length > 0)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "invalid recurrence weekdays",
+        path: ["weekdays"],
+      });
+    }
+  });
+export type TaskRecurrenceRule = z.infer<typeof taskRecurrenceRuleSchema>;
+
+function validateTaskRecurrence(
+  task: {
+    recurrence: TaskRecurrence;
+    dueAt: string | null;
+    recurrenceRule?: TaskRecurrenceRule | null | undefined;
+  },
+  context: z.RefinementCtx,
+) {
+  const rule = task.recurrenceRule;
+  if (task.recurrence !== "none" && !task.dueAt) {
+    context.addIssue({
+      code: "custom",
+      message: "recurring tasks require dueAt",
+      path: ["dueAt"],
+    });
+  }
+  if ((task.recurrence === "custom") !== Boolean(rule)) {
+    context.addIssue({
+      code: "custom",
+      message: "custom recurrence requires its rule",
+      path: ["recurrenceRule"],
+    });
+  }
+  if (rule && task.dueAt) {
+    const local = new Date(new Date(task.dueAt).getTime() - 3 * 60 * 60 * 1000);
+    if (Number.isNaN(local.getTime())) return;
+    if (
+      (rule.until && rule.until < local.toISOString().slice(0, 10)) ||
+      (rule.weekdays.length > 0 && !rule.weekdays.includes(local.getUTCDay()))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "first due date must match recurrence days and end date",
+        path: ["dueAt"],
+      });
+    }
+  }
+}
 
 export const taskStatusSchema = z.enum([
   "open",
@@ -33,8 +96,10 @@ const taskPayloadSchema = z
     assigneeUserId: z.string().uuid().nullable().default(null),
     visibility: visibilitySchema.default("household"),
     recurrence: taskRecurrenceSchema.default("none"),
+    recurrenceRule: taskRecurrenceRuleSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine(validateTaskRecurrence);
 
 const taskMutableFieldsSchema = z
   .object({
@@ -43,11 +108,13 @@ const taskMutableFieldsSchema = z
     assigneeUserId: z.string().uuid().nullable(),
     visibility: visibilitySchema,
     recurrence: taskRecurrenceSchema,
+    recurrenceRule: taskRecurrenceRuleSchema.nullable().optional(),
   })
   .strict();
 
 const taskCreatePayloadSchema = taskMutableFieldsSchema.superRefine(
   (payload, context) => {
+    validateTaskRecurrence(payload, context);
     if (payload.recurrence !== "none" && payload.dueAt === null)
       context.addIssue({
         code: "custom",
@@ -115,6 +182,7 @@ export const taskSchema = z
     dueAt: z.string().datetime({ offset: true }).nullable(),
     visibility: visibilitySchema,
     recurrence: taskRecurrenceSchema,
+    recurrenceRule: taskRecurrenceRuleSchema.nullable().optional(),
     status: taskStatusSchema,
     completedAt: z.string().datetime({ offset: true }).nullable(),
     version: z.number().int().positive(),
@@ -123,6 +191,7 @@ export const taskSchema = z
   })
   .strict()
   .superRefine((task, context) => {
+    validateTaskRecurrence(task, context);
     if (task.visibility === "private" && task.ownerUserId === null)
       context.addIssue({
         code: "custom",

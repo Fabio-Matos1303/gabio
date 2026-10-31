@@ -2,6 +2,8 @@ import {
   taskCreateCommandSchema,
   type TaskGatewayCommand,
   type TaskRecurrence,
+  taskRecurrenceRuleSchema,
+  type TaskRecurrenceRule,
   type Visibility,
 } from "@gabio/contracts";
 
@@ -34,10 +36,45 @@ export function canEditResource(
 export function nextRecurrenceDueAt(
   currentDueAt: Date,
   recurrence: TaskRecurrence,
+  rule: TaskRecurrenceRule | null = null,
 ): Date | null {
   if (Number.isNaN(currentDueAt.getTime()))
     throw new RangeError("Invalid due date");
   if (recurrence === "none") return null;
+
+  if (recurrence === "custom") {
+    const validated = taskRecurrenceRuleSchema.parse(rule);
+    // Bahia uses UTC-03. Operate on a shifted UTC date to preserve local wall time.
+    const local = new Date(currentDueAt.getTime() - 3 * 60 * 60 * 1000);
+    const { frequency, interval, weekdays, until } = validated;
+    if (frequency === "daily") local.setUTCDate(local.getUTCDate() + interval);
+    if (frequency === "weekly") {
+      const currentDay = (local.getUTCDay() + 6) % 7;
+      const days = (weekdays.length ? weekdays : [local.getUTCDay()])
+        .map((day) => (day + 6) % 7)
+        .sort((a, b) => a - b);
+      const later = days.find((day) => day > currentDay);
+      local.setUTCDate(
+        local.getUTCDate() +
+          (later === undefined
+            ? interval * 7 - currentDay + days[0]!
+            : later - currentDay),
+      );
+    }
+    if (frequency === "monthly" || frequency === "yearly") {
+      const day = local.getUTCDate();
+      local.setUTCDate(1);
+      local.setUTCMonth(
+        local.getUTCMonth() + interval * (frequency === "yearly" ? 12 : 1),
+      );
+      const last = new Date(
+        Date.UTC(local.getUTCFullYear(), local.getUTCMonth() + 1, 0),
+      ).getUTCDate();
+      local.setUTCDate(Math.min(day, last));
+    }
+    if (until && local.toISOString().slice(0, 10) > until) return null;
+    return new Date(local.getTime() + 3 * 60 * 60 * 1000);
+  }
 
   const next = new Date(currentDueAt);
   if (recurrence === "daily") next.setUTCDate(next.getUTCDate() + 1);

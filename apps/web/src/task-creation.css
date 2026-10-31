@@ -1,0 +1,222 @@
+/* Task creation grows from compact mobile to a centered desktop dialog. */
+.tasks-section .section-heading h2 {
+  font-family: inherit;
+  font-size: 2rem;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+.tasks-section .section-heading {
+  align-items: center;
+  gap: 16px;
+}
+.tasks-section .section-heading .secondary-button {
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--color-accent);
+  background: var(--glass-fallback);
+  border: 1px solid #c9cfc1;
+  font-size: 0.875rem;
+}
+.task-quick-create {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+.task-quick-create label {
+  min-width: 0;
+}
+.task-quick-create input {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid #a9b3a3;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  background: #fffdf8;
+  font-size: 1rem;
+}
+.task-quick-create .primary-button {
+  min-height: 48px;
+  width: 100%;
+}
+.task-dialog {
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(100dvh - 16px);
+  margin: auto 0 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  border-radius: 24px 24px 0 0;
+}
+.task-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.task-dialog::backdrop {
+  background: rgba(16, 32, 25, 0.38);
+}
+.task-dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #d3d7cb;
+}
+.task-dialog-heading h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+.task-dialog-heading button {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--color-accent);
+  background: transparent;
+  font-size: 1.75rem;
+  cursor: pointer;
+}
+.task-dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.task-dialog-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.task-dialog-fields > label,
+.task-recurrence > label,
+.task-recurrence-interval label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.task-dialog :is(input:not([type="checkbox"]):not([type="hidden"]), select),
+.task-recurrence select,
+.task-recurrence input:not([type="checkbox"]):not([type="hidden"]) {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid #a9b3a3;
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  background: #fffdf8;
+  font: inherit;
+  font-size: 1rem;
+}
+.task-recurrence {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin: 0;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid #d3d7cb;
+  min-width: 0;
+}
+.task-recurrence > legend {
+  padding: 0 8px 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.task-recurrence-interval {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+  gap: 12px;
+}
+.task-weekdays {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.task-weekdays legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+}
+.task-weekdays label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.task-weekdays input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--color-accent);
+  flex-shrink: 0;
+}
+.field-hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.task-weekdays .field-hint {
+  grid-column: 1 / -1;
+}
+.task-dialog-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #d3d7cb;
+  background: var(--glass-fallback);
+}
+.task-dialog-actions button {
+  min-width: 0;
+  min-height: 48px;
+  padding: 12px;
+  font-size: 1rem;
+}
+.task-dialog-actions .secondary-button {
+  color: var(--color-accent);
+  background: transparent;
+  border: 1px solid #a9b3a3;
+}
+.task-dialog :focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+.task-editor > .task-recurrence {
+  grid-column: 1 / -1;
+}
+@media (min-width: 640px) {
+  .task-quick-create {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .task-quick-create .primary-button {
+    width: auto;
+  }
+  .task-dialog {
+    width: min(600px, calc(100% - 48px));
+    max-height: calc(100dvh - 48px);
+    margin: auto;
+    border-radius: var(--radius-section);
+  }
+}

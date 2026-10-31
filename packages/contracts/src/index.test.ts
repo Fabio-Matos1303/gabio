@@ -13,6 +13,18 @@ import {
 } from "./index.js";
 
 describe("proposedCommandSchema", () => {
+  it("rejects a custom model proposal without its recurrence rule", () => {
+    expect(() =>
+      incomingCommandSchema.parse({
+        type: "task.create",
+        payload: {
+          title: "Proposta sintética",
+          dueAt: "2026-11-02T12:00:00Z",
+          recurrence: "custom",
+        },
+      }),
+    ).toThrow();
+  });
   it("accepts a valid private task", () => {
     const result = proposedCommandSchema.parse({
       type: "task.create",
@@ -83,6 +95,66 @@ describe("proposedCommandSchema", () => {
 });
 
 describe("taskGatewayCommandSchema", () => {
+  it.each([
+    { interval: 0 },
+    { interval: 366 },
+    { interval: 1.5 },
+    { weekdays: [1, 1] },
+    { weekdays: [7] },
+    { timeZone: "UTC" },
+    { until: "2026-01-01" },
+    { weekdays: [2] },
+    { extra: true },
+  ])("rejects invalid custom recurrence %s", (override) => {
+    expect(() =>
+      taskGatewayCommandSchema.parse({
+        commandId: "00000000-0000-4000-8000-000000000010",
+        type: "create",
+        payload: {
+          title: "Tarefa sintética",
+          dueAt: "2026-11-02T12:00:00Z",
+          assigneeUserId: null,
+          visibility: "household",
+          recurrence: "custom",
+          recurrenceRule: {
+            frequency: "weekly",
+            interval: 2,
+            weekdays: [1, 3],
+            until: null,
+            timeZone: "America/Bahia",
+            ...override,
+          },
+        },
+      }),
+    ).toThrow();
+  });
+  it("accepts a custom weekly rule and rejects custom without a rule", () => {
+    const command = {
+      commandId: "00000000-0000-4000-8000-000000000010",
+      type: "create",
+      payload: {
+        title: "Tarefa sintética",
+        dueAt: "2026-11-02T12:00:00Z",
+        assigneeUserId: null,
+        visibility: "household",
+        recurrence: "custom",
+        recurrenceRule: {
+          frequency: "weekly",
+          interval: 2,
+          weekdays: [1, 3],
+          until: null,
+          timeZone: "America/Bahia",
+        },
+      },
+    };
+    expect(taskGatewayCommandSchema.parse(command).type).toBe("create");
+    expect(() =>
+      taskGatewayCommandSchema.parse({
+        ...command,
+        payload: { ...command.payload, recurrenceRule: null },
+      }),
+    ).toThrow();
+  });
   it("accepts a strict create command", () => {
     expect(
       taskGatewayCommandSchema.parse({

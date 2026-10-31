@@ -53,5 +53,16 @@
   "docs/product/design-system.md",
   "docs/product/home-redesign-plan.md",
   "docs/product/references/clean-liquid-glass-concept.png",
-  "docs/operations/home-design-validation.md"
+  "docs/operations/home-design-validation.md",
+  "apps/web/src/app/TaskCreationDialog.tsx",
+  "apps/web/src/app/TaskRecurrenceFields.tsx",
+  "apps/web/src/task-creation.css",
+  "apps/web/src/test/setup.ts",
+  "packages/domain/src/index.ts",
+  "packages/domain/src/index.test.ts",
+  "supabase/migrations/202610310001_add_custom_task_recurrence.sql",
+  "supabase/migrations/202610310002_custom_task_recurrence.sql",
+  "supabase/tests/custom_task_recurrence.test.sql",
+  "docs/architecture/decisions/013-custom-task-recurrence.md",
+  "docs/operations/task-modal-recurrence.md"
 ]

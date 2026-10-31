@@ -2,6 +2,7 @@ import { GoogleCalendarSettings } from "./GoogleCalendarSettings.js";
 import {
   taskCreateCommandSchema,
   taskUpdateCommandSchema,
+  taskSchema,
   type Task,
   type TaskGatewayCommand,
 } from "@gabio/contracts";
@@ -30,6 +31,12 @@ import { FinancePanel } from "./FinancePanel.js";
 import { HomeCalendar } from "./HomeCalendar.js";
 import { HomeInsights } from "./HomeInsights.js";
 import { BottomNavigation } from "./BottomNavigation.js";
+import { TaskCreationDialog } from "./TaskCreationDialog.js";
+import {
+  TaskRecurrenceFields,
+  taskRecurrenceLabel,
+} from "./TaskRecurrenceFields.js";
+import "../task-creation.css";
 import { TelegramSettings } from "./TelegramSettings.js";
 import {
   createTaskCommandQueue,
@@ -429,6 +436,25 @@ function OnboardingPanel({
   );
 }
 
+function parseRecurrenceRule(form: FormData): unknown {
+  const value = String(form.get("recurrenceRule") ?? "");
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { invalid: true };
+  }
+}
+
+function parseTaskDueAt(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value))
+    return null;
+  const date = new Date(`${value}-03:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  const local = new Date(date.getTime() - 3 * 60 * 60 * 1000).toISOString();
+  return local.slice(0, value.length) === value ? date : null;
+}
+
 function TaskPanel({
   gateway,
   user,
@@ -441,12 +467,13 @@ function TaskPanel({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [queued, setQueued] = useState<QueuedTaskCommand[]>([]);
   const [notice, setNotice] = useState<Notice>(null);
-  const [showDetails, setShowDetails] = useState(false);
+  const [creationOpen, setCreationOpen] = useState(false);
+  const [creationTitle, setCreationTitle] = useState("");
+  const [creationSequence, setCreationSequence] = useState(0);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [savingTask, setSavingTask] = useState(false);
   const [sendingTask, setSendingTask] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const commandInFlight = useRef(false);
   const queue = useMemo(createTaskCommandQueue, []);
   const context = useMemo(
@@ -454,6 +481,11 @@ function TaskPanel({
     [user.id, household.id],
   );
   const contextKey = user.id + ":" + household.id;
+  useEffect(() => {
+    const close = () => setCreationOpen(false);
+    window.addEventListener("hashchange", close);
+    return () => window.removeEventListener("hashchange", close);
+  }, []);
   const liveContextKey = useRef<string | null>(contextKey);
   liveContextKey.current = contextKey;
 
@@ -479,7 +511,6 @@ function TaskPanel({
           nextTasks = await gateway.listTasks();
           if (!isCurrent()) return false;
           writeTaskSnapshot(context, nextTasks);
-          setLastUpdated(new Date().toISOString());
           confirmed = true;
         } catch {
           if (!isCurrent()) return false;
@@ -641,16 +672,19 @@ function TaskPanel({
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (commandInFlight.current) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     const dueValue = String(data.get("dueAt") ?? "");
-    if (dueValue && Number.isNaN(new Date(dueValue).getTime())) {
+    const dueDate = parseTaskDueAt(dueValue);
+    if (dueValue && !dueDate) {
       setNotice({ kind: "error", text: "Informe um prazo válido." });
       return;
     }
     const assigneeUserId = String(data.get("assigneeUserId") || "") || null;
     const visibility = String(data.get("visibility"));
     const recurrence = String(data.get("recurrence"));
+    const recurrenceRule = parseRecurrenceRule(data);
     if (
       visibility === "private" &&
       assigneeUserId !== null &&
@@ -674,22 +708,25 @@ function TaskPanel({
       type: "create",
       payload: {
         title: String(data.get("title")),
-        dueAt: dueValue ? new Date(dueValue).toISOString() : null,
+        dueAt: dueDate?.toISOString() ?? null,
         assigneeUserId,
         visibility,
         recurrence,
+        recurrenceRule,
       },
     });
     if (!parsed.success) {
       setNotice({
         kind: "error",
-        text: "Revise o título e os detalhes da tarefa.",
+        text: "Revise o título, o prazo e a recorrência. A primeira data deve corresponder aos dias escolhidos e não ultrapassar o fim da repetição.",
       });
       return;
     }
     if (await run(parsed.data)) {
       form.reset();
-      setShowDetails(false);
+      setCreationTitle("");
+      setCreationOpen(false);
+      setCreationSequence((value) => value + 1);
     }
   }
 
@@ -698,6 +735,11 @@ function TaskPanel({
     if (!editingTask || savingTask) return;
     const form = new FormData(event.currentTarget);
     const due = String(form.get("dueAt") ?? "");
+    const dueDate = parseTaskDueAt(due);
+    if (due && !dueDate) {
+      setNotice({ kind: "error", text: "Informe um prazo válido." });
+      return;
+    }
     const parsed = taskUpdateCommandSchema.safeParse({
       commandId: crypto.randomUUID(),
       type: "update",
@@ -705,17 +747,27 @@ function TaskPanel({
         taskId: editingTask.id,
         expectedVersion: editingTask.version,
         title: String(form.get("title") ?? ""),
-        dueAt:
-          due && !Number.isNaN(new Date(due).getTime())
-            ? new Date(due).toISOString()
-            : null,
+        dueAt: dueDate?.toISOString() ?? null,
         assigneeUserId: String(form.get("assigneeUserId") ?? "") || null,
         recurrence: String(form.get("recurrence")),
+        recurrenceRule: parseRecurrenceRule(form),
         visibility: String(form.get("visibility")),
       },
     });
+    const updatedTask = parsed.success
+      ? taskSchema.safeParse({
+          ...editingTask,
+          title: parsed.data.payload.title,
+          dueAt: parsed.data.payload.dueAt,
+          assigneeUserId: parsed.data.payload.assigneeUserId,
+          recurrence: parsed.data.payload.recurrence,
+          recurrenceRule: parsed.data.payload.recurrenceRule,
+          visibility: parsed.data.payload.visibility,
+        })
+      : null;
     if (
       !parsed.success ||
+      !updatedTask?.success ||
       (parsed.data.payload.recurrence !== "none" &&
         !parsed.data.payload.dueAt) ||
       (parsed.data.payload.visibility === "private" &&
@@ -724,7 +776,7 @@ function TaskPanel({
     ) {
       setNotice({
         kind: "error",
-        text: "Revise os detalhes: recorrências exigem prazo e tarefas privadas só podem ser atribuídas a você.",
+        text: "Revise os detalhes: o prazo deve corresponder aos dias escolhidos e não ultrapassar o fim da repetição. Tarefas privadas só podem ser atribuídas a você.",
       });
       return;
     }
@@ -776,12 +828,6 @@ function TaskPanel({
       description: "O que a casa já resolveu",
     },
   ];
-  const recurrenceLabel = {
-    none: null,
-    daily: "Diária",
-    weekly: "Semanal",
-    monthly: "Mensal",
-  } as const;
   const memberName = (userId: string | null) =>
     household.members.find((member) => member.userId === userId)?.displayName;
 
@@ -793,20 +839,7 @@ function TaskPanel({
     >
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Rotina</p>
           <h2 id="tasks-title">Tarefas</h2>
-          <p className="section-description">
-            Capture rapidamente e acompanhe o andamento em um só quadro.
-          </p>
-          {lastUpdated && (
-            <small className="muted">
-              Última consulta:{" "}
-              {new Intl.DateTimeFormat("pt-BR", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }).format(new Date(lastUpdated))}
-            </small>
-          )}
         </div>
         <button
           type="button"
@@ -818,7 +851,7 @@ function TaskPanel({
         </button>
       </div>
       {loadingTasks && <p role="status">Atualizando tarefas…</p>}
-      <NoticeBox notice={notice} />
+      <NoticeBox notice={creationOpen ? null : notice} />
       {editingTask && (
         <section className="settings-card" aria-label="Editar tarefa">
           <h3>Editar tarefa</h3>
@@ -847,8 +880,7 @@ function TaskPanel({
                   editingTask.dueAt
                     ? new Date(
                         new Date(editingTask.dueAt).getTime() -
-                          new Date(editingTask.dueAt).getTimezoneOffset() *
-                            60000,
+                          3 * 60 * 60 * 1000,
                       )
                         .toISOString()
                         .slice(0, 16)
@@ -871,19 +903,7 @@ function TaskPanel({
                 ))}
               </select>
             </label>
-            <label>
-              Repetir
-              <select
-                disabled={sendingTask}
-                name="recurrence"
-                defaultValue={editingTask.recurrence}
-              >
-                <option value="none">Não repetir</option>
-                <option value="daily">Diariamente</option>
-                <option value="weekly">Semanalmente</option>
-                <option value="monthly">Mensalmente</option>
-              </select>
-            </label>
+            <TaskRecurrenceFields task={editingTask} disabled={sendingTask} />
             <label>
               Quem pode ver
               <select
@@ -936,81 +956,47 @@ function TaskPanel({
             </button>
           </article>
         ))}
-      <form className="task-create" onSubmit={createTask}>
-        <div className="task-create-main">
-          <label>
-            <span className="sr-only">Título da tarefa</span>
-            <input
-              disabled={sendingTask}
-              name="title"
-              required
-              maxLength={240}
-              placeholder="O que precisa ser feito?"
-            />
-          </label>
-          <button
-            className="task-details-toggle"
-            type="button"
+      <form
+        className="task-quick-create glass-surface"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setNotice(null);
+          setCreationOpen(true);
+        }}
+      >
+        <label>
+          <span className="sr-only">Título da tarefa</span>
+          <input
+            name="quickTitle"
+            value={creationTitle}
+            onChange={(event) => setCreationTitle(event.target.value)}
+            placeholder="O que precisa ser feito?"
+            maxLength={240}
             disabled={sendingTask}
-            aria-expanded={showDetails}
-            onClick={() => setShowDetails((value) => !value)}
-          >
-            {showDetails ? "Ocultar detalhes" : "Adicionar detalhes"}
-          </button>
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={sendingTask}
-          >
-            {sendingTask ? "Enviando…" : "Adicionar tarefa"}
-          </button>
-        </div>
-        <div className="task-create-details" hidden={!showDetails}>
-          <label>
-            Responsável
-            <select
-              disabled={sendingTask}
-              name="assigneeUserId"
-              defaultValue=""
-            >
-              <option value="">Sem responsável</option>
-              {household.members.map((member) => (
-                <option key={member.userId} value={member.userId}>
-                  {member.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Prazo
-            <input disabled={sendingTask} name="dueAt" type="datetime-local" />
-          </label>
-          <label>
-            Repetir
-            <select
-              disabled={sendingTask}
-              name="recurrence"
-              defaultValue="none"
-            >
-              <option value="none">Não repetir</option>
-              <option value="daily">Diariamente</option>
-              <option value="weekly">Semanalmente</option>
-              <option value="monthly">Mensalmente</option>
-            </select>
-          </label>
-          <label>
-            Quem pode ver
-            <select
-              disabled={sendingTask}
-              name="visibility"
-              defaultValue="household"
-            >
-              <option value="household">Todos da casa</option>
-              <option value="private">Somente eu</option>
-            </select>
-          </label>
-        </div>
+          />
+        </label>
+        <button
+          className="primary-button"
+          disabled={sendingTask}
+          type="submit"
+          aria-haspopup="dialog"
+        >
+          Adicionar tarefa
+        </button>
       </form>
+      <TaskCreationDialog
+        open={creationOpen}
+        busy={sendingTask}
+        title={creationTitle}
+        setTitle={setCreationTitle}
+        resetKey={creationSequence}
+        onClose={() => {
+          if (!commandInFlight.current) setCreationOpen(false);
+        }}
+        onSubmit={createTask}
+        household={household}
+        feedback={<NoticeBox notice={notice} />}
+      />
       <div className="task-board" role="region" aria-label="Quadro de tarefas">
         {columns.map((column) => {
           const columnTasks = displayedTasks.filter(
@@ -1064,6 +1050,7 @@ function TaskPanel({
                             >
                               {overdue ? "Atrasada · " : ""}
                               {new Intl.DateTimeFormat("pt-BR", {
+                                timeZone: "America/Bahia",
                                 day: "2-digit",
                                 month: "short",
                                 hour: "2-digit",
@@ -1071,8 +1058,13 @@ function TaskPanel({
                               }).format(dueDate)}
                             </time>
                           )}
-                          {recurrenceLabel[task.recurrence] && (
-                            <span>{recurrenceLabel[task.recurrence]}</span>
+                          {task.recurrence !== "none" && (
+                            <span>
+                              {taskRecurrenceLabel(
+                                task.recurrence,
+                                task.recurrenceRule,
+                              )}
+                            </span>
                           )}
                         </div>
                         {pendingIds.has(task.id) && (
@@ -1183,7 +1175,7 @@ function TaskPanel({
                             </button>
                           ) : (
                             <span className="task-card-note">
-                              Próxima ocorrência criada
+                              Tarefa recorrente concluída
                             </span>
                           )}
                         </fieldset>
@@ -1399,7 +1391,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: liquid-glass-ui-2026.10.31.1</p>
+            <p className="muted">Versão: task-modal-recurrence-2026.10.31.1</p>
           </section>
         </div>
       )}
