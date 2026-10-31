@@ -19,23 +19,23 @@ Referência aprovada: [esboço clean com seções em vidro líquido](references/
 
 Nomes técnicos em inglês. Estes valores são a base para centralizar variáveis CSS na implementação; o contraste deve ser verificado na composição final.
 
-| Token | Valor inicial | Uso |
-| --- | --- | --- |
-| `color-background` | `#f4f1e8` | Fundo liso da aplicação |
-| `color-text` | `#18342a` | Texto principal e ícones |
-| `color-text-muted` | `#526158` | Texto secundário |
-| `color-accent` | `#18342a` | Ações principais |
-| `color-selection` | `#dfe7d8` | Fundo suave da aba ativa |
-| `color-terracotta` | `#9a5c3f` | Acento pontual |
-| `glass-surface` | `rgba(255, 255, 255, 0.64)` | Containers e ilha |
-| `glass-border` | `rgba(255, 255, 255, 0.85)` | Contorno de 1 px |
-| `glass-fallback` | `#faf8f2` | Superfície opaca sem blur |
-| `glass-blur` | `16px` | Desfoque moderado da superfície |
-| `glass-shadow` | `0 8px 24px rgba(24, 52, 42, 0.07)` | Elevação discreta |
-| `radius-section` | `24px` | Containers de seção |
-| `radius-control` | `12px` | Botões e campos |
-| `radius-pill` | `999px` | Ilha e seleção de aba |
-| `space-unit` | `4px` | Escala de espaçamento |
+| Token              | Valor inicial                       | Uso                             |
+| ------------------ | ----------------------------------- | ------------------------------- |
+| `color-background` | `#f4f1e8`                           | Fundo liso da aplicação         |
+| `color-text`       | `#18342a`                           | Texto principal e ícones        |
+| `color-text-muted` | `#526158`                           | Texto secundário                |
+| `color-accent`     | `#18342a`                           | Ações principais                |
+| `color-selection`  | `#dfe7d8`                           | Fundo suave da aba ativa        |
+| `color-terracotta` | `#9a5c3f`                           | Acento pontual                  |
+| `glass-surface`    | `rgba(255, 255, 255, 0.64)`         | Containers e ilha               |
+| `glass-border`     | `rgba(255, 255, 255, 0.85)`         | Contorno de 1 px                |
+| `glass-fallback`   | `#faf8f2`                           | Superfície opaca sem blur       |
+| `glass-blur`       | `16px`                              | Desfoque moderado da superfície |
+| `glass-shadow`     | `0 8px 24px rgba(24, 52, 42, 0.07)` | Elevação discreta               |
+| `radius-section`   | `24px`                              | Containers de seção             |
+| `radius-control`   | `12px`                              | Botões e campos                 |
+| `radius-pill`      | `999px`                             | Ilha e seleção de aba           |
+| `space-unit`       | `4px`                               | Escala de espaçamento           |
 
 Usar espaçamentos de 4, 8, 12, 16, 20, 24 e 32 px. No mobile, começar com margens laterais de 16 a 20 px, padding de seção de 20 px e distância entre seções de 16 px. Ajustar responsivamente sem sacrificar o conteúdo.
 
