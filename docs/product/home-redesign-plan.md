@@ -1,7 +1,7 @@
 # Plano de adequação da tela inicial
 
 - Data: 2026-10-31.
-- Status: implementação local validada; pendente de publicação.
+- Status: release do design publicada e verificada; hub restrito ao modo completo de desenvolvimento.
 - Referências: [design system](design-system.md), [diretrizes responsivas](ui-guidelines.md) e [ADR-008](../architecture/decisions/008-module-pages-and-home-hub.md).
 
 ## Objetivo e escopo
@@ -71,4 +71,4 @@ Usar os gateways existentes. Não introduzir nova API, permissões, esquema de d
 
 ## Resultado esperado
 
-Um hub com a mesma função e informação atuais, apresentado segundo o design system aprovado. A implementação local segue este plano, com registro de validação em [verificação do redesign](../operations/home-design-validation.md). A publicação permanece pendente.
+Um hub com a mesma função e informação atuais, apresentado segundo o design system aprovado. A release `liquid-glass-ui-2026.10.31.1` foi publicada e verificada, com registro em [verificação do redesign](../operations/home-design-validation.md). Os estilos compartilhados e a ilha estão em produção; habilitar a navegação do hub continua fora do escopo deste plano.
