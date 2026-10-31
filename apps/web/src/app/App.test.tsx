@@ -450,7 +450,8 @@ describe("App", () => {
 
   it("opens the task MVP without finance or Telegram navigation", async () => {
     vi.stubEnv("VITE_TASKS_MVP", "true");
-    render(<App gateway={gatewayWith()} />);
+    const gateway = gatewayWith();
+    render(<App gateway={gateway} />);
     expect(
       await screen.findByRole("heading", { name: "Tarefas" }),
     ).toBeInTheDocument();
@@ -467,6 +468,12 @@ describe("App", () => {
     expect(
       screen.queryByRole("button", { name: "Conectar Telegram" }),
     ).not.toBeInTheDocument();
+    expect(gateway.loadFinance).not.toHaveBeenCalled();
+    expect(gateway.listCalendarEvents).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Ajustes" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   it.each(["#inicio", "#financas", "#tarefas"])(
@@ -497,7 +504,7 @@ describe("App", () => {
         await screen.findByLabelText("Nome de exibição"),
       ).toBeInTheDocument();
       expect(
-        screen.queryByRole("heading", { name: "Visão da casa" }),
+        screen.queryByRole("heading", { name: "Início" }),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "Conectar Telegram" }),
@@ -667,10 +674,16 @@ describe("App", () => {
     render(<App gateway={gateway} />);
 
     expect(
-      await screen.findByRole("heading", { name: "Visão da casa" }),
+      await screen.findByRole("heading", { name: "Início" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mês anterior" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Próximo mês" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Hoje" })).toBeEnabled();
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Navegação principal" }),
+      ).getByRole("link", { name: "Início" }),
+    ).toHaveAttribute("aria-current", "page");
     await waitFor(() => expect(gateway.listCalendarEvents).toHaveBeenCalled());
     expect(
       (await screen.findAllByText("Compromisso de teste")).length,

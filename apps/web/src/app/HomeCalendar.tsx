@@ -233,11 +233,17 @@ export function HomeCalendar({ gateway }: { gateway: AppGateway }) {
   }
 
   return (
-    <section className="home-calendar" aria-labelledby="home-calendar-title">
+    <section
+      className="home-calendar glass-surface"
+      aria-labelledby="home-calendar-title"
+      aria-busy={loading}
+    >
       <div className="calendar-toolbar">
         <div>
-          <p className="eyebrow">Planejamento mensal</p>
-          <h2 id="home-calendar-title">{monthLabel.format(visibleMonth)}</h2>
+          <h2 id="home-calendar-title">Agenda</h2>
+          <p className="calendar-month" aria-live="polite">
+            {monthLabel.format(visibleMonth)}
+          </p>
         </div>
         <div className="calendar-navigation" aria-label="Navegar entre meses">
           <button
@@ -259,118 +265,129 @@ export function HomeCalendar({ gateway }: { gateway: AppGateway }) {
           </button>
         </div>
       </div>
-      <div className="calendar-summary" aria-label="Resumo do mês">
-        <span>
-          <strong>
-            {monthItems.filter((item) => item.type === "task").length}
-          </strong>{" "}
-          tarefas com prazo
-        </span>
-        <span>
-          <strong>
-            {monthItems.filter((item) => item.type === "event").length}
-          </strong>{" "}
-          compromissos
-        </span>
-        <span className="income">
-          <strong>{money.format(scheduledIncome / 100)}</strong> entradas
-          previstas
-        </span>
-        <span className="expense">
-          <strong>{money.format(scheduledExpense / 100)}</strong> saídas
-          previstas
-        </span>
-      </div>
-      {failed && (
+      {loading ? (
+        <p role="status">Carregando agenda…</p>
+      ) : failed ? (
         <p className="notice error" role="alert">
           Não foi possível carregar o planejamento mensal.
         </p>
-      )}
-      <div className="calendar-layout" aria-busy={loading}>
-        <div className="month-calendar">
-          <div className="calendar-weekdays" aria-hidden="true">
-            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
-              <span key={day}>{day}</span>
-            ))}
+      ) : (
+        <>
+          <div className="calendar-summary" aria-label="Resumo do mês">
+            <span>
+              <strong>
+                {monthItems.filter((item) => item.type === "task").length}
+              </strong>{" "}
+              tarefas com prazo
+            </span>
+            <span>
+              <strong>
+                {monthItems.filter((item) => item.type === "event").length}
+              </strong>{" "}
+              compromissos
+            </span>
+            <span className="income">
+              <strong>{money.format(scheduledIncome / 100)}</strong> entradas
+              previstas
+            </span>
+            <span className="expense">
+              <strong>{money.format(scheduledExpense / 100)}</strong> saídas
+              previstas
+            </span>
           </div>
-          <div className="calendar-grid">
-            {cells.map((date) => {
-              const key = dateKey(date);
-              const dayItems = items.filter((item) => item.date === key);
-              const outside = date.getMonth() !== visibleMonth.getMonth();
-              return (
-                <button
-                  type="button"
-                  className={`calendar-day${outside ? " outside" : ""}${key === selectedDate ? " selected" : ""}${key === dateKey(now) ? " today" : ""}`}
-                  key={key}
-                  onClick={() => {
-                    setSelectedDate(key);
-                    if (outside)
-                      setVisibleMonth(
-                        new Date(date.getFullYear(), date.getMonth(), 1),
-                      );
-                  }}
-                  aria-label={`${date.toLocaleDateString("pt-BR")}, ${dayItems.length} item(ns)`}
-                >
-                  <span className="day-number">{date.getDate()}</span>
-                  <span className="day-markers" aria-hidden="true">
-                    {Array.from(new Set(dayItems.map((item) => item.type)))
-                      .slice(0, 4)
-                      .map((type) => (
-                        <i className={type} key={type} />
+          <div className="calendar-layout" aria-busy={loading}>
+            <div className="month-calendar">
+              <div className="calendar-weekdays" aria-hidden="true">
+                {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(
+                  (day) => (
+                    <span key={day}>{day}</span>
+                  ),
+                )}
+              </div>
+              <div className="calendar-grid">
+                {cells.map((date) => {
+                  const key = dateKey(date);
+                  const dayItems = items.filter((item) => item.date === key);
+                  const outside = date.getMonth() !== visibleMonth.getMonth();
+                  return (
+                    <button
+                      type="button"
+                      className={`calendar-day${outside ? " outside" : ""}${key === selectedDate ? " selected" : ""}${key === dateKey(now) ? " today" : ""}`}
+                      key={key}
+                      onClick={() => {
+                        setSelectedDate(key);
+                        if (outside)
+                          setVisibleMonth(
+                            new Date(date.getFullYear(), date.getMonth(), 1),
+                          );
+                      }}
+                      aria-label={`${date.toLocaleDateString("pt-BR")}, ${dayItems.length} item(ns)`}
+                      aria-pressed={key === selectedDate}
+                      aria-current={key === dateKey(now) ? "date" : undefined}
+                    >
+                      <span className="day-number">{date.getDate()}</span>
+                      <span className="day-markers" aria-hidden="true">
+                        {Array.from(new Set(dayItems.map((item) => item.type)))
+                          .slice(0, 4)
+                          .map((type) => (
+                            <i className={type} key={type} />
+                          ))}
+                      </span>
+                      {dayItems.slice(0, 2).map((item) => (
+                        <small className={item.type} key={item.id}>
+                          {item.title}
+                        </small>
                       ))}
-                  </span>
-                  {dayItems.slice(0, 2).map((item) => (
-                    <small className={item.type} key={item.id}>
-                      {item.title}
-                    </small>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <aside className="day-agenda" aria-label="Itens do dia selecionado">
+              <p>
+                {parseDateOnly(selectedDate).toLocaleDateString("pt-BR", {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                })}
+              </p>
+              <h3>
+                {selectedItems.length
+                  ? `${selectedItems.length} item(ns)`
+                  : "Dia livre"}
+              </h3>
+              {selectedItems.length === 0 ? (
+                <span>
+                  Nenhuma tarefa, compromisso ou movimentação prevista.
+                </span>
+              ) : (
+                <ul>
+                  {selectedItems.map((item) => (
+                    <li className={item.type} key={`${item.type}-${item.id}`}>
+                      <i aria-hidden="true" />
+                      <div>
+                        <strong>{item.title}</strong>
+                        <span>
+                          {item.detail}
+                          {item.amountMinor !== undefined
+                            ? ` · ${money.format(item.amountMinor / 100)}`
+                            : ""}
+                        </span>
+                      </div>
+                    </li>
                   ))}
-                </button>
-              );
-            })}
+                </ul>
+              )}
+            </aside>
           </div>
-        </div>
-        <aside className="day-agenda" aria-label="Itens do dia selecionado">
-          <p>
-            {parseDateOnly(selectedDate).toLocaleDateString("pt-BR", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-            })}
-          </p>
-          <h3>
-            {selectedItems.length
-              ? `${selectedItems.length} item(ns)`
-              : "Dia livre"}
-          </h3>
-          {selectedItems.length === 0 ? (
-            <span>Nenhuma tarefa, compromisso ou movimentação prevista.</span>
-          ) : (
-            <ul>
-              {selectedItems.map((item) => (
-                <li className={item.type} key={`${item.type}-${item.id}`}>
-                  <i aria-hidden="true" />
-                  <div>
-                    <strong>{item.title}</strong>
-                    <span>
-                      {item.detail}
-                      {item.amountMinor !== undefined
-                        ? ` · ${money.format(item.amountMinor / 100)}`
-                        : ""}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-      </div>
-      <div className="calendar-legend" aria-label="Legenda">
-        <span className="task">Tarefas</span>
-        <span className="event">Compromissos</span>
-        <span className="income">Entradas</span>
-        <span className="expense">Saídas</span>
-      </div>
+          <div className="calendar-legend" aria-label="Legenda">
+            <span className="task">Tarefas</span>
+            <span className="event">Compromissos</span>
+            <span className="income">Entradas</span>
+            <span className="expense">Saídas</span>
+          </div>
+        </>
+      )}
     </section>
   );
 }

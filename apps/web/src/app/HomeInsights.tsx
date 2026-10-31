@@ -88,26 +88,47 @@ export function HomeInsights({ gateway }: { gateway: AppGateway }) {
     ...cashFlow.flatMap((month) => [month.income, month.expense]),
   );
 
+  if (loading || failed) {
+    return (
+      <section
+        className="home-insights"
+        aria-label="Indicadores da casa"
+        aria-busy={loading}
+      >
+        <p
+          className="glass-surface insight-state"
+          role={failed ? "alert" : "status"}
+        >
+          {failed
+            ? "Não foi possível carregar os indicadores da casa."
+            : "Carregando indicadores…"}
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section
       className="home-insights"
       aria-label="Indicadores da casa"
       aria-busy={loading}
     >
-      {failed && (
-        <p className="notice error insights-error" role="alert">
-          Não foi possível carregar os indicadores da casa.
-        </p>
-      )}
-      <article className="insight-card tasks-insight">
+      <article className="insight-card glass-surface tasks-insight">
         <div className="insight-heading">
           <div>
-            <p className="eyebrow">Rotina</p>
-            <h2>{activeTasks} tarefas ativas</h2>
+            <h2>Tarefas</h2>
+            <p className="insight-value">
+              {activeTasks} <span>ativas</span>
+            </p>
           </div>
-          <a href="#tarefas">Gerenciar</a>
+          <a href="#tarefas">
+            Ver tarefas <span aria-hidden="true">↗</span>
+          </a>
         </div>
-        <div className="task-progress" aria-label="Distribuição das tarefas">
+        {tasks.length === 0 && (
+          <p className="insight-empty">Nenhuma tarefa cadastrada.</p>
+        )}
+        <div className="task-progress" aria-hidden="true">
           <i
             className="open"
             style={{ width: `${(taskCounts.open / taskTotal) * 100}%` }}
@@ -136,38 +157,53 @@ export function HomeInsights({ gateway }: { gateway: AppGateway }) {
           </div>
         </dl>
       </article>
-      <article className="insight-card finance-insight">
+      <article className="insight-card glass-surface finance-insight">
         <div className="insight-heading">
           <div>
-            <p className="eyebrow">Fluxo financeiro</p>
-            <h2>{money.format((current.income - current.expense) / 100)}</h2>
+            <h2>Finanças</h2>
+            <p className="insight-value">
+              {money.format((current.income - current.expense) / 100)}
+            </p>
+            <p className="insight-caption">Resultado do mês</p>
           </div>
-          <a href="#financas">Detalhar</a>
+          <a href="#financas">
+            Ver finanças <span aria-hidden="true">↗</span>
+          </a>
         </div>
-        <div
-          className="cash-chart"
-          aria-label="Entradas e saídas dos últimos seis meses"
-        >
-          {cashFlow.map((month) => (
-            <div className="cash-month" key={month.key}>
-              <div>
-                <i
-                  className="income"
-                  style={{
-                    height: `${Math.max(3, (month.income / largestValue) * 100)}%`,
-                  }}
-                />
-                <i
-                  className="expense"
-                  style={{
-                    height: `${Math.max(3, (month.expense / largestValue) * 100)}%`,
-                  }}
-                />
+        {cashFlow.some((month) => month.income > 0 || month.expense > 0) ? (
+          <div
+            className="cash-chart"
+            aria-label="Entradas e saídas dos últimos seis meses"
+          >
+            {cashFlow.map((month) => (
+              <div className="cash-month" key={month.key}>
+                <div aria-hidden="true">
+                  <i
+                    className="income"
+                    style={{
+                      height: `${Math.max(3, (month.income / largestValue) * 100)}%`,
+                    }}
+                  />
+                  <i
+                    className="expense"
+                    style={{
+                      height: `${Math.max(3, (month.expense / largestValue) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <span>{month.label}</span>
+                <span className="sr-only">
+                  {month.key}: entradas {money.format(month.income / 100)};
+                  saídas {money.format(month.expense / 100)}.
+                </span>
               </div>
-              <span>{month.label}</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p className="insight-empty">
+            Nenhum lançamento nos últimos seis meses.
+          </p>
+        )}
         <div className="finance-legend">
           <span className="income">
             Entradas {money.format(current.income / 100)}

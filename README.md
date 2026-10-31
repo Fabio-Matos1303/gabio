@@ -40,6 +40,8 @@ Copie `.env.example` para `.env.local` e preencha apenas valores de desenvolvime
 ## Documentação
 
 - [Visão do produto](docs/product/vision.md)
+- [Design system](docs/product/design-system.md)
+- [Diretrizes de UI responsiva](docs/product/ui-guidelines.md)
 - [Roadmap de entregas](docs/product/delivery-roadmap.md)
 - [Arquitetura](docs/architecture/overview.md)
 - [Modelo de ameaças](docs/security/threat-model.md)

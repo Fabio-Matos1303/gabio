@@ -46,5 +46,12 @@
   "scripts/finalize-release.sh",
   "supabase/migrations/202610290001_harden_task_gateway_privileges.sql",
   "supabase/tests/task_gateway_privileges.test.sql",
-  "README.md"
+  "README.md",
+  "AGENTS.md",
+  "apps/web/src/app/BottomNavigation.tsx",
+  "apps/web/src/app/HomeFeedback.test.tsx",
+  "docs/product/design-system.md",
+  "docs/product/home-redesign-plan.md",
+  "docs/product/references/clean-liquid-glass-concept.png",
+  "docs/operations/home-design-validation.md"
 ]

@@ -4,6 +4,10 @@
 
 A interface do Gabio é projetada primeiro para telas móveis e aprimorada progressivamente para tablet e desktop. A versão desktop não deve apenas ampliar espaços: deve usar a área adicional para oferecer contexto sem esconder as ações e informações prioritárias.
 
+Na implementação, escreva os estilos base para mobile e acrescente adaptações com `min-width`. Comece a validação pelo viewport de 360 × 800 antes de avançar para telas maiores.
+
+O padrão visual obrigatório é o [design system do Gabio](design-system.md), aprovado em 2026-10-31. Consulte-o antes de planejar ou desenvolver telas: fundo liso, conteúdo funcional, seções em vidro líquido e navegação em ilha. As regras responsivas deste documento complementam esse padrão.
+
 ## Viewports mínimos de validação
 
 - Mobile compacto: 360 × 800, zoom 100%.

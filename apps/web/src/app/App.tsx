@@ -29,6 +29,7 @@ import { defaultGateway } from "../lib/supabase-gateway.js";
 import { FinancePanel } from "./FinancePanel.js";
 import { HomeCalendar } from "./HomeCalendar.js";
 import { HomeInsights } from "./HomeInsights.js";
+import { BottomNavigation } from "./BottomNavigation.js";
 import { TelegramSettings } from "./TelegramSettings.js";
 import {
   createTaskCommandQueue,
@@ -1326,10 +1327,9 @@ function Dashboard({
         <div hidden={page !== "home"}>
           <section className="home-intro" id="inicio">
             <div>
-              <p className="eyebrow">{today}</p>
-              <h1>Visão da casa</h1>
+              <h1>Início</h1>
+              <p className="home-date">{today}</p>
             </div>
-            <p>Veja o que precisa acontecer e como o mês está organizado.</p>
           </section>
           <HomeInsights gateway={gateway} />
           <HomeCalendar gateway={gateway} />
@@ -1399,34 +1399,11 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: navigation-stability-2026.10.30.1</p>
+            <p className="muted">Versão: liquid-glass-ui-2026.10.31.1</p>
           </section>
         </div>
       )}
-      <nav className="bottom-nav" aria-label="Navegação principal">
-        {!taskMvp && (
-          <a className={page === "home" ? "active" : undefined} href="#inicio">
-            Início
-          </a>
-        )}
-        <a className={page === "tasks" ? "active" : undefined} href="#tarefas">
-          Tarefas
-        </a>
-        {!taskMvp && (
-          <a
-            className={page === "finance" ? "active" : undefined}
-            href="#financas"
-          >
-            Finanças
-          </a>
-        )}
-        <a
-          className={page === "settings" ? "active" : undefined}
-          href="#configuracoes"
-        >
-          Ajustes
-        </a>
-      </nav>
+      <BottomNavigation page={page} taskMvp={taskMvp} />
     </main>
   );
 }
