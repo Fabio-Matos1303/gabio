@@ -1,6 +1,7 @@
+import { TaskCardDialog } from "./TaskCardDialog.js";
 import type { TagRecord } from "../lib/task-views.js";
 import { TaskTagFields } from "./TaskTagFields.js";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { HouseholdContext } from "../lib/app-gateway.js";
 import { TaskRecurrenceFields } from "./TaskRecurrenceFields.js";
@@ -28,66 +29,17 @@ export function TaskCreationDialog({
   resetKey: number;
   catalog?: TagRecord[];
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const id = useId();
   const [visibility, setVisibility] = useState<"household" | "private">(
     "household",
   );
   useEffect(() => setVisibility("household"), [resetKey]);
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    if (open && !element.open) {
-      element.showModal();
-      element.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
-    } else if (!open && element.open) element.close();
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
   return (
-    <dialog
-      ref={dialog}
-      className="task-dialog glass-surface"
-      aria-labelledby={`${id}-heading`}
-      onKeyDown={(event) => {
-        if (event.key !== "Tab") return;
-        const controls = Array.from(
-          event.currentTarget.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]',
-          ),
-        ).filter((element) => element.getClientRects().length > 0);
-        const first = controls[0];
-        const last = controls.at(-1);
-        if (
-          first &&
-          last &&
-          ((event.shiftKey && document.activeElement === first) ||
-            (!event.shiftKey && document.activeElement === last))
-        ) {
-          event.preventDefault();
-          (event.shiftKey ? last : first).focus();
-        }
-      }}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!busy) onClose();
-      }}
+    <TaskCardDialog
+      open={open}
+      title="Nova tarefa"
+      busy={busy}
+      onClose={onClose}
     >
-      <header className="task-dialog-heading">
-        <h2 id={`${id}-heading`}>Nova tarefa</h2>
-        <button
-          type="button"
-          aria-label="Fechar criação de tarefa"
-          disabled={busy}
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </header>
       <form key={resetKey} className="task-dialog-form" onSubmit={onSubmit}>
         <div className="task-dialog-fields">
           {open && feedback}
@@ -154,6 +106,6 @@ export function TaskCreationDialog({
           </button>
         </footer>
       </form>
-    </dialog>
+    </TaskCardDialog>
   );
 }

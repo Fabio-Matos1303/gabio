@@ -1,3 +1,4 @@
+import { TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskViews } from "./TaskViews.js";
 import { TaskTagFields, parseTagInput } from "./TaskTagFields.js";
 import type { TagRecord } from "../lib/task-views.js";
@@ -744,7 +745,14 @@ function TaskPanel({
 
   async function saveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editingTask || savingTask) return;
+    if (
+      !editingTask ||
+      savingTask ||
+      sendingTask ||
+      pendingIds.has(editingTask.id) ||
+      editingTask.status === "completed"
+    )
+      return;
     const form = new FormData(event.currentTarget);
     const due = String(form.get("dueAt") ?? "");
     const dueDate = parseTaskDueAt(due);
@@ -850,7 +858,18 @@ function TaskPanel({
     return (
       <article className="task-card" key={task.id}>
         <div className="task-card-heading">
-          <strong>{task.title}</strong>
+          <button
+            type="button"
+            className="task-card-title"
+            aria-label={`Abrir cartão: ${task.title}`}
+            disabled={sendingTask || pendingIds.has(task.id)}
+            onClick={() => {
+              setNotice(null);
+              setEditingTask(task);
+            }}
+          >
+            {task.title}
+          </button>
           <span className={`visibility-chip ${task.visibility}`}>
             {task.visibility === "private" ? "Somente eu" : "Da casa"}
           </span>
@@ -1013,117 +1032,157 @@ function TaskPanel({
         </button>
       </div>
       {loadingTasks && <p role="status">Atualizando tarefas…</p>}
-      <NoticeBox notice={creationOpen ? null : notice} />
+      <NoticeBox notice={creationOpen || editingTask ? null : notice} />
       {editingTask && (
-        <section className="settings-card" aria-label="Editar tarefa">
-          <h3>Editar tarefa</h3>
+        <TaskCardDialog
+          open
+          title={
+            editingTask.status === "completed"
+              ? "Cartão da tarefa"
+              : "Editar tarefa"
+          }
+          onClose={() => setEditingTask(null)}
+          busy={savingTask || sendingTask}
+        >
           <form
-            className="task-create-details task-editor"
+            className="task-dialog-form task-editor"
             onSubmit={saveTask}
             key={editingTask.id}
           >
-            <label>
-              Título
-              <input
-                disabled={sendingTask}
-                name="title"
-                defaultValue={editingTask.title}
-                required
-                maxLength={240}
-              />
-            </label>
-            <label>
-              Prazo
-              <input
-                disabled={sendingTask}
-                name="dueAt"
-                type="datetime-local"
-                defaultValue={
-                  editingTask.dueAt
-                    ? new Date(
-                        new Date(editingTask.dueAt).getTime() -
-                          3 * 60 * 60 * 1000,
-                      )
-                        .toISOString()
-                        .slice(0, 16)
-                    : ""
-                }
-              />
-            </label>
-            <label>
-              Responsável
-              <select
-                disabled={sendingTask}
-                name="assigneeUserId"
-                defaultValue={editingTask.assigneeUserId ?? ""}
-              >
-                <option value="">Sem responsável</option>
-                {household.members.map((member) => (
-                  <option key={member.userId} value={member.userId}>
-                    {member.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <TaskTagFields
-              key={editingTask.id + editingVisibility}
-              tags={
-                editingVisibility === editingTask.visibility
-                  ? (editingTask.tags ?? [])
-                  : []
-              }
-              catalog={catalog}
-              visibility={editingVisibility}
-              disabled={
-                savingTask ||
-                sendingTask ||
-                editingVisibility !== editingTask.visibility
-              }
-            />
-            {editingVisibility !== editingTask.visibility && (
-              <p role="status">
-                As tags serão removidas ao mudar a visibilidade. Salve e reabra
-                para selecionar tags do novo escopo.
+            <div className="task-dialog-fields">
+              <NoticeBox notice={notice} />
+              <p className="task-card-context">
+                {editingTask.status === "completed"
+                  ? "Concluída · Consulta"
+                  : editingTask.status === "in_progress"
+                    ? "Em andamento"
+                    : "A fazer"}{" "}
+                ·{" "}
+                {editingTask.visibility === "private"
+                  ? "Somente eu"
+                  : "Da casa"}
               </p>
-            )}
-            <TaskRecurrenceFields task={editingTask} disabled={sendingTask} />
-            <label>
-              Quem pode ver
-              <select
-                disabled={sendingTask}
-                name="visibility"
-                value={editingVisibility}
-                onChange={(event) =>
-                  setEditingVisibility(
-                    event.target.value as "household" | "private",
-                  )
+              <fieldset
+                className="task-card-edit-fields"
+                disabled={
+                  editingTask.status === "completed" ||
+                  savingTask ||
+                  sendingTask
                 }
               >
-                <option value="household">Todos da casa</option>
-                <option
-                  value="private"
-                  disabled={editingTask.ownerUserId !== user.id}
+                <label>
+                  Título
+                  <input
+                    disabled={sendingTask}
+                    name="title"
+                    defaultValue={editingTask.title}
+                    required
+                    maxLength={240}
+                  />
+                </label>
+                <label>
+                  Prazo
+                  <input
+                    disabled={sendingTask}
+                    name="dueAt"
+                    type="datetime-local"
+                    defaultValue={
+                      editingTask.dueAt
+                        ? new Date(
+                            new Date(editingTask.dueAt).getTime() -
+                              3 * 60 * 60 * 1000,
+                          )
+                            .toISOString()
+                            .slice(0, 16)
+                        : ""
+                    }
+                  />
+                </label>
+                <label>
+                  Responsável
+                  <select
+                    disabled={sendingTask}
+                    name="assigneeUserId"
+                    defaultValue={editingTask.assigneeUserId ?? ""}
+                  >
+                    <option value="">Sem responsável</option>
+                    {household.members.map((member) => (
+                      <option key={member.userId} value={member.userId}>
+                        {member.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <TaskTagFields
+                  key={editingTask.id + editingVisibility}
+                  tags={
+                    editingVisibility === editingTask.visibility
+                      ? (editingTask.tags ?? [])
+                      : []
+                  }
+                  catalog={catalog}
+                  visibility={editingVisibility}
+                  disabled={
+                    savingTask ||
+                    sendingTask ||
+                    editingVisibility !== editingTask.visibility
+                  }
+                />
+                {editingVisibility !== editingTask.visibility && (
+                  <p role="status">
+                    As tags serão removidas ao mudar a visibilidade. Salve e
+                    reabra para selecionar tags do novo escopo.
+                  </p>
+                )}
+                <TaskRecurrenceFields
+                  task={editingTask}
+                  disabled={sendingTask}
+                />
+                <label>
+                  Quem pode ver
+                  <select
+                    disabled={sendingTask}
+                    name="visibility"
+                    value={editingVisibility}
+                    onChange={(event) =>
+                      setEditingVisibility(
+                        event.target.value as "household" | "private",
+                      )
+                    }
+                  >
+                    <option value="household">Todos da casa</option>
+                    <option
+                      value="private"
+                      disabled={editingTask.ownerUserId !== user.id}
+                    >
+                      Somente eu
+                    </option>
+                  </select>
+                </label>
+              </fieldset>
+            </div>
+            <footer className="task-dialog-actions">
+              {editingTask.status !== "completed" && (
+                <button
+                  className="primary-button"
+                  disabled={savingTask || sendingTask}
                 >
-                  Somente eu
-                </option>
-              </select>
-            </label>
-            <button
-              className="primary-button"
-              disabled={savingTask || sendingTask}
-            >
-              Salvar tarefa
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={savingTask}
-              onClick={() => setEditingTask(null)}
-            >
-              Cancelar edição
-            </button>
+                  Salvar tarefa
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={savingTask}
+                onClick={() => setEditingTask(null)}
+              >
+                {editingTask.status === "completed"
+                  ? "Fechar cartão"
+                  : "Cancelar edição"}
+              </button>
+            </footer>
           </form>
-        </section>
+        </TaskCardDialog>
       )}
       {queued.length > 0 && (
         <div className="queue-notice" role="status">
@@ -1187,6 +1246,12 @@ function TaskPanel({
         feedback={<NoticeBox notice={notice} />}
       />
       <TaskViews
+        canOpenTask={(task) => !sendingTask && !pendingIds.has(task.id)}
+        onOpenTask={(task) => {
+          if (sendingTask || pendingIds.has(task.id)) return;
+          setNotice(null);
+          setEditingTask(task);
+        }}
         tasks={displayedTasks}
         renderTask={renderTaskCard}
         gateway={gateway}
@@ -1402,7 +1467,7 @@ function Dashboard({
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
             <p className="muted">
-              Versão: task-views-tags-google-read-2026.11.02.1
+              Versão: task-ui-cards-filters-calendar-2026.11.02.1
             </p>
           </section>
         </div>

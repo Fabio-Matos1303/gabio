@@ -140,7 +140,7 @@ describe("App", () => {
     render(<App gateway={gateway} />);
     fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
     const editor = within(
-      screen.getByRole("region", { name: "Editar tarefa" }),
+      screen.getByRole("dialog", { name: "Editar tarefa" }),
     );
     fireEvent.change(editor.getByLabelText("Prazo"), {
       target: { value: "2026-11-02T09:00" },
@@ -586,8 +586,12 @@ describe("App", () => {
     const gateway = gatewayWith();
     gateway.listTasks = vi.fn().mockResolvedValue([makeTask()]);
     render(<App gateway={gateway} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
-    const editor = screen.getByRole("region", { name: "Editar tarefa" });
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: `Abrir cartão: ${makeTask().title}`,
+      }),
+    );
+    const editor = screen.getByRole("dialog", { name: "Editar tarefa" });
     fireEvent.change(within(editor).getByLabelText("Título"), {
       target: { value: "Título sintético revisado" },
     });
@@ -608,7 +612,7 @@ describe("App", () => {
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole("region", { name: "Editar tarefa" }),
+        screen.queryByRole("dialog", { name: "Editar tarefa" }),
       ).not.toBeInTheDocument(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Concluir" }));

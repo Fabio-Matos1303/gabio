@@ -96,14 +96,14 @@ describe("TaskViews", () => {
       await screen.findByRole("button", { name: "Editar tags locais" }),
     );
     expect(
-      screen.getByRole("region", { name: "Editar tags locais" }),
+      screen.getByRole("dialog", { name: "Editar tags locais" }),
     ).toBeInTheDocument();
     expect(readGoogleItems).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Atualizar Google" }));
     // The new generation removes the stale form before it can be submitted.
     await waitFor(() =>
       expect(
-        screen.queryByRole("region", { name: "Editar tags locais" }),
+        screen.queryByRole("dialog", { name: "Editar tags locais" }),
       ).toBeNull(),
     );
     expect(saveExternalTaskTags).not.toHaveBeenCalled();
@@ -157,5 +157,102 @@ describe("TaskViews", () => {
       "Suas tarefas Gabio continuam disponíveis",
     );
     expect(screen.getByText("Limpar cozinha")).toBeInTheDocument();
+  });
+  it("keeps tag selections when switching match mode and preserves sort when clearing filters", () => {
+    render(
+      <TaskViews
+        tasks={tasks}
+        renderTask={(t) => <article key={t.id}>{t.title}</article>}
+        gateway={{} as AppGateway}
+        household={house}
+        userId={userId}
+        catalog={[]}
+        onTagsChanged={async () => {}}
+      />,
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Ordenar" }), {
+      target: { value: "title" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    const panel = within(
+      screen.getByRole("dialog", { name: "Filtrar tarefas e eventos" }),
+    );
+    fireEvent.click(panel.getByRole("checkbox", { name: "Casa" }));
+    fireEvent.change(panel.getByRole("combobox", { name: "Correspondência" }), {
+      target: { value: "all" },
+    });
+    expect(panel.getByRole("checkbox", { name: "Casa" })).toBeChecked();
+    fireEvent.click(panel.getByRole("button", { name: /Mostrar 1 resultado/ }));
+    expect(screen.queryByText("Comprar materiais")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remover filtro Tag: Casa" }),
+    );
+    expect(screen.getByText("Comprar materiais")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Ordenar" })).toHaveValue(
+      "title",
+    );
+  });
+
+  it("disables calendar previews when the task cannot be opened", () => {
+    const dueAt = new Date().toISOString();
+    render(
+      <TaskViews
+        tasks={[{ ...tasks[0]!, dueAt }]}
+        renderTask={(t) => <article key={t.id}>{t.title}</article>}
+        gateway={{} as AppGateway}
+        household={house}
+        userId={userId}
+        catalog={[]}
+        onTagsChanged={async () => {}}
+        onOpenTask={vi.fn()}
+        canOpenTask={() => false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Calendário" }));
+    const preview =
+      document.querySelector<HTMLButtonElement>(".calendar-event");
+    expect(preview).not.toBeNull();
+    expect(preview).toBeDisabled();
+  });
+  it("requires a separate confirmation before deleting a catalog tag", async () => {
+    const executeTagCommand = vi.fn().mockResolvedValue({});
+    render(
+      <TaskViews
+        tasks={tasks}
+        renderTask={(t) => <article key={t.id}>{t.title}</article>}
+        gateway={{ executeTagCommand } as unknown as AppGateway}
+        household={house}
+        userId={userId}
+        catalog={[
+          {
+            id: "80000000-0000-4000-8000-000000000001",
+            name: "Casa",
+            visibility: "household",
+            version: 3,
+          },
+        ]}
+        onTagsChanged={async () => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Gerenciar tags" }));
+    const manager = within(
+      screen.getByRole("dialog", { name: "Gerenciar tags" }),
+    );
+    fireEvent.click(
+      manager.getByRole("button", { name: "Editar tag Casa · Da casa" }),
+    );
+    fireEvent.click(manager.getByRole("button", { name: "Excluir tag" }));
+    expect(executeTagCommand).not.toHaveBeenCalled();
+    expect(manager.getByRole("alert")).toHaveTextContent(
+      "As tarefas serão mantidas",
+    );
+    fireEvent.click(
+      manager.getByRole("button", { name: "Confirmar exclusão da tag" }),
+    );
+    await waitFor(() =>
+      expect(executeTagCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "delete", expectedVersion: 3 }),
+      ),
+    );
   });
 });

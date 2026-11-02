@@ -1,0 +1,15 @@
+[
+  "apps/web/src/app/App.tsx",
+  "apps/web/src/app/App.test.tsx",
+  "apps/web/src/app/TaskCardDialog.tsx",
+  "apps/web/src/app/TaskCreationDialog.tsx",
+  "apps/web/src/app/TaskTagFields.tsx",
+  "apps/web/src/app/TaskTagFields.test.tsx",
+  "apps/web/src/app/TaskViews.tsx",
+  "apps/web/src/app/TaskViews.test.tsx",
+  "apps/web/src/task-views.css",
+  "apps/web/public/version.json",
+  "docs/product/task-management-ux-review.md",
+  "docs/operations/task-management-ui-validation.md",
+  "scripts/task-ui-release-files.json"
+]

@@ -1,3 +1,5 @@
+import { TaskCardDialog } from "./TaskCardDialog.js";
+import { TaskTagFields } from "./TaskTagFields.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Task } from "@gabio/contracts";
 import type { AppGateway, HouseholdContext } from "../lib/app-gateway.js";
@@ -26,7 +28,11 @@ export function TaskViews({
   userId,
   catalog,
   onTagsChanged,
+  onOpenTask,
+  canOpenTask,
 }: {
+  onOpenTask?: (task: Task) => void;
+  canOpenTask?: (task: Task) => boolean;
   tasks: Task[];
   renderTask: (task: Task) => ReactNode;
   gateway: AppGateway;
@@ -37,6 +43,13 @@ export function TaskViews({
 }) {
   const [view, setView] = useState<"kanban" | "calendar">("kanban");
   const [filters, setFilters] = useState<TaskFilters>(initialTaskFilters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [tagSearch, setTagSearch] = useState("");
+  const [sourceSearch, setSourceSearch] = useState("");
+  const [externalCard, setExternalCard] = useState<
+    (ViewItem & { generation: string }) | null
+  >(null);
   const [reading, setReading] = useState<GoogleReading | null>(null);
   const [readError, setReadError] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -130,7 +143,9 @@ export function TaskViews({
   useEffect(() => {
     if (externalEditor && reading?.generation !== externalEditor.generation)
       setExternalEditor(null);
-  }, [reading, externalEditor]);
+    if (externalCard && reading?.generation !== externalCard.generation)
+      setExternalCard(null);
+  }, [reading, externalEditor, externalCard]);
   const patch = (change: Partial<TaskFilters>) =>
     setFilters((current) => ({ ...current, ...change }));
   const toggle = (
@@ -182,13 +197,106 @@ export function TaskViews({
     Number(filters.recurrence !== "all") +
     Number(filters.tags.length > 0 || filters.tagMode === "none") +
     Number(filters.sources.length !== 3 || filters.sourceIds.length > 0);
-  function renderItem(item: ViewItem) {
+  const visibleItems =
+    view === "kanban"
+      ? selected.filter((i) => i.status !== "event")
+      : selected.filter((i) => cells.some((date) => itemOnDay(i, date)));
+  const visibleCount = visibleItems.length;
+  const chips: { key: string; label: string; clear: () => void }[] = [];
+  if (filters.search)
+    chips.push({
+      key: "search",
+      label: `Busca: ${filters.search}`,
+      clear: () => patch({ search: "" }),
+    });
+  if (filters.due !== "all")
+    chips.push({
+      key: "due",
+      label: (
+        {
+          today: "Hoje",
+          week: "Próximos 7 dias",
+          overdue: "Atrasadas (Gabio)",
+          none: "Sem data",
+          range: `${filters.from || "Início"} – ${filters.to || "Fim"}`,
+        } as Record<string, string>
+      )[filters.due]!,
+      clear: () => patch({ due: "all", from: "", to: "" }),
+    });
+  if (filters.assignee !== "all")
+    chips.push({
+      key: "assignee",
+      label: `Responsável: ${filters.assignee === "none" ? "Sem responsável" : filters.assignee === userId ? "Eu" : household.members.find((m) => m.userId === filters.assignee)?.displayName || "Selecionado"} (Gabio)`,
+      clear: () => patch({ assignee: "all" }),
+    });
+  if (filters.visibility !== "all")
+    chips.push({
+      key: "visibility",
+      label: filters.visibility === "private" ? "Somente eu" : "Da casa",
+      clear: () => patch({ visibility: "all" }),
+    });
+  if (filters.recurrence !== "all")
+    chips.push({
+      key: "recurrence",
+      label:
+        filters.recurrence === "yes"
+          ? "Recorrentes (Gabio)"
+          : "Sem repetição (Gabio)",
+      clear: () => patch({ recurrence: "all" }),
+    });
+  if (filters.statuses.length)
+    chips.push({
+      key: "status",
+      label: `Status: ${filters.statuses.map((s) => ({ open: "A fazer", in_progress: "Em andamento", completed: "Concluídas", event: "Compromissos" })[s]).join(", ")}`,
+      clear: () => patch({ statuses: [] }),
+    });
+  if (filters.tagMode === "none")
+    chips.push({
+      key: "no-tags",
+      label: "Sem tags",
+      clear: () => patch({ tagMode: "any" }),
+    });
+  filters.tags.forEach((t) =>
+    chips.push({
+      key: `tag:${t}`,
+      label: `Tag: ${t}`,
+      clear: () => toggle("tags", t),
+    }),
+  );
+  if (filters.sources.length !== 3)
+    chips.push({
+      key: "sources",
+      label: `Origens: ${filters.sources.map((s) => ({ gabio: "Gabio", google_tasks: "Google Tasks", google_calendar: "Google Agenda" })[s]).join(", ") || "Nenhuma"}`,
+      clear: () => patch({ sources: [...initialTaskFilters.sources] }),
+    });
+  filters.sourceIds.forEach((id) =>
+    chips.push({
+      key: id,
+      label: `Lista: ${reading?.sources.find((s) => `${s.source}:${s.id}` === id)?.name || "Selecionada"}`,
+      clear: () => toggle("sourceIds", id),
+    }),
+  );
+  function renderItem(item: ViewItem, detail = false) {
     if (item.task) return renderTask(item.task);
     const e = item.external!;
     return (
       <article className="task-card external-task" key={item.id}>
         <div className="task-card-heading">
-          <strong>{item.title || "Sem título"}</strong>
+          {detail ? (
+            <strong>{item.title || "Sem título"}</strong>
+          ) : (
+            <button
+              type="button"
+              className="task-card-title"
+              aria-label={`Abrir cartão: ${item.title || "Sem título"}`}
+              onClick={() => {
+                if (reading?.generation)
+                  setExternalCard({ ...item, generation: reading.generation });
+              }}
+            >
+              {item.title || "Sem título"}
+            </button>
+          )}
           <span className="visibility-chip private">Somente eu</span>
         </div>
         <p>
@@ -227,8 +335,10 @@ export function TaskViews({
           <button
             type="button"
             onClick={() => {
-              if (reading?.generation)
+              if (reading?.generation) {
+                setExternalCard(null);
                 setExternalEditor({ ...item, generation: reading.generation });
+              }
               setExternalNotice("");
               tagAttempt.current = null;
             }}
@@ -274,9 +384,7 @@ export function TaskViews({
         <div className="task-presets" role="group" aria-label="Filtros rápidos">
           {[
             ["today", "Hoje"],
-            ["overdue", "Atrasadas"],
-            ["week", "Próximos 7 dias"],
-            ["none", "Sem prazo"],
+            ["overdue", "Atrasadas (Gabio)"],
           ].map(([value, label]) => (
             <button
               type="button"
@@ -291,19 +399,39 @@ export function TaskViews({
           ))}
           <button
             type="button"
-            aria-pressed={filters.assignee === "none"}
+            aria-pressed={filters.assignee === userId}
             onClick={() =>
-              patch({ assignee: filters.assignee === "none" ? "all" : "none" })
+              patch({ assignee: filters.assignee === userId ? "all" : userId })
             }
           >
-            Sem responsável
+            Minhas (Gabio)
           </button>
         </div>
-        <details>
-          <summary>
+        <div className="task-toolbar-actions">
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => setFiltersOpen(true)}
+          >
             Filtros{activeFilterCount ? ` (${activeFilterCount})` : ""}
-          </summary>
-          <div className="task-filter-grid">
+          </button>
+          {gateway.executeTagCommand && (
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onClick={() => setTagsOpen(true)}
+            >
+              Gerenciar tags
+            </button>
+          )}
+        </div>
+        <TaskCardDialog
+          open={filtersOpen}
+          title="Filtrar tarefas e eventos"
+          onClose={() => setFiltersOpen(false)}
+          className="task-filter-dialog"
+        >
+          <div className="task-dialog-fields task-filter-grid">
             <fieldset>
               <legend>Status</legend>
               {[
@@ -409,7 +537,7 @@ export function TaskViews({
                   onChange={(e) =>
                     patch({
                       tagMode: e.target.value as TaskFilters["tagMode"],
-                      tags: [],
+                      tags: e.target.value === "none" ? [] : filters.tags,
                     })
                   }
                 >
@@ -418,17 +546,33 @@ export function TaskViews({
                   <option value="none">Sem tags</option>
                 </select>
               </label>
+              {filters.tagMode !== "none" && (
+                <label>
+                  Buscar tag
+                  <input
+                    type="search"
+                    value={tagSearch}
+                    onChange={(e) => setTagSearch(e.target.value)}
+                  />
+                </label>
+              )}
               {filters.tagMode !== "none" &&
-                availableTags.map((t) => (
-                  <label className="task-check" key={t}>
-                    <input
-                      type="checkbox"
-                      checked={filters.tags.includes(t)}
-                      onChange={() => toggle("tags", t)}
-                    />
-                    {t}
-                  </label>
-                ))}
+                availableTags
+                  .filter((t) =>
+                    t
+                      .toLocaleLowerCase("pt-BR")
+                      .includes(tagSearch.toLocaleLowerCase("pt-BR")),
+                  )
+                  .map((t) => (
+                    <label className="task-check" key={t}>
+                      <input
+                        type="checkbox"
+                        checked={filters.tags.includes(t)}
+                        onChange={() => toggle("tags", t)}
+                      />
+                      {t}
+                    </label>
+                  ))}
               <small>Filtros por tags exibem somente tarefas.</small>
             </fieldset>
             <fieldset>
@@ -447,16 +591,37 @@ export function TaskViews({
                   {label}
                 </label>
               ))}
-              {reading?.sources.map((s) => (
-                <label className="task-check" key={`${s.source}:${s.id}`}>
+              {!!reading?.sources.length && (
+                <label>
+                  Buscar lista ou calendário
                   <input
-                    type="checkbox"
-                    checked={filters.sourceIds.includes(`${s.source}:${s.id}`)}
-                    onChange={() => toggle("sourceIds", `${s.source}:${s.id}`)}
+                    type="search"
+                    value={sourceSearch}
+                    onChange={(e) => setSourceSearch(e.target.value)}
                   />
-                  {s.name} · {s.source === "google_tasks" ? "Tasks" : "Agenda"}
                 </label>
-              ))}
+              )}
+              {reading?.sources
+                .filter((s) =>
+                  s.name
+                    .toLocaleLowerCase("pt-BR")
+                    .includes(sourceSearch.toLocaleLowerCase("pt-BR")),
+                )
+                .map((s) => (
+                  <label className="task-check" key={`${s.source}:${s.id}`}>
+                    <input
+                      type="checkbox"
+                      checked={filters.sourceIds.includes(
+                        `${s.source}:${s.id}`,
+                      )}
+                      onChange={() =>
+                        toggle("sourceIds", `${s.source}:${s.id}`)
+                      }
+                    />
+                    {s.name} ·{" "}
+                    {s.source === "google_tasks" ? "Tasks" : "Agenda"}
+                  </label>
+                ))}
               {!!reading?.sources.length && (
                 <small>
                   Nenhuma lista/calendário selecionado: exibir todos.
@@ -464,8 +629,25 @@ export function TaskViews({
               )}
             </fieldset>
           </div>
-        </details>
-        <label>
+          <footer className="task-dialog-actions">
+            <button
+              type="button"
+              onClick={() =>
+                setFilters({ ...initialTaskFilters, sort: filters.sort })
+              }
+            >
+              Limpar filtros
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Mostrar {visibleCount} resultado(s)
+            </button>
+          </footer>
+        </TaskCardDialog>
+        <label className="task-sort">
           Ordenar
           <select
             value={filters.sort}
@@ -486,22 +668,79 @@ export function TaskViews({
         </label>
         <div className="task-results">
           <span role="status">
-            {selected.filter((i) => i.status !== "event").length} tarefa(s)
+            {visibleItems.filter((i) => i.status !== "event").length} tarefa(s)
             {view === "calendar"
-              ? ` · ${selected.filter((i) => i.status === "event").length} compromisso(s)`
+              ? ` · ${visibleItems.filter((i) => i.status === "event").length} compromisso(s) na grade`
               : ""}
             {activeFilterCount ? " · Filtros ativos" : ""}
+            {reading &&
+            (reading.tasksState === "partial" ||
+              reading.calendarState === "partial")
+              ? " · Contagem parcial"
+              : ""}
           </span>
           {activeFilterCount > 0 && (
             <button
               type="button"
-              onClick={() => setFilters(initialTaskFilters)}
+              onClick={() =>
+                setFilters({ ...initialTaskFilters, sort: filters.sort })
+              }
             >
               Limpar filtros
             </button>
           )}
         </div>
+        {chips.length > 0 && (
+          <div className="task-active-filters" aria-label="Filtros ativos">
+            {chips.map((c) => (
+              <button
+                type="button"
+                key={c.key}
+                aria-label={`Remover filtro ${c.label}`}
+                onClick={c.clear}
+              >
+                {c.label}
+                <span aria-hidden="true"> ×</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {filters.tags.length > 1 && (
+          <small>
+            Tags:{" "}
+            {filters.tagMode === "all"
+              ? "todas as selecionadas"
+              : "qualquer uma das selecionadas"}
+            .
+          </small>
+        )}
+        {view === "kanban" && (
+          <small>
+            Ordenação aplicada dentro de cada coluna. Compromissos do Google
+            Agenda aparecem no calendário.
+          </small>
+        )}
+        {view === "calendar" && (
+          <small>
+            Ordenação aplicada à lista do dia. Sem data: {noDate.length}{" "}
+            tarefa(s).
+          </small>
+        )}
       </div>
+      {externalCard && (
+        <TaskCardDialog
+          open
+          title="Cartão do Google"
+          onClose={() => setExternalCard(null)}
+        >
+          <div className="task-dialog-fields">
+            <p>
+              Somente leitura · Alterações no conteúdo são feitas no Google.
+            </p>
+            {renderItem(externalCard, true)}
+          </div>
+        </TaskCardDialog>
+      )}
       {gateway.readGoogleItems && (
         <section className="task-google-state" aria-label="Leitura do Google">
           {loading && <p role="status">Atualizando itens do Google…</p>}
@@ -568,86 +807,99 @@ export function TaskViews({
         </section>
       )}
       {externalEditor && (
-        <section
-          className="glass-surface external-tag-editor"
-          aria-label="Editar tags locais"
+        <TaskCardDialog
+          open
+          title="Editar tags locais"
+          busy={externalBusy}
+          onClose={() => setExternalEditor(null)}
         >
-          <h3>Tags de {externalEditor.title}</h3>
-          <p>
-            Estas tags ficam somente no Gabio e serão removidas ao reconectar ou
-            desconectar o Google.
-          </p>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (
-                externalBusy ||
-                !gateway.saveExternalTaskTags ||
-                !reading?.generation ||
-                externalEditor.generation !== reading.generation
-              )
-                return;
-              const tags = parseTagInput(
-                new FormData(e.currentTarget).get("tags"),
-              );
-              const candidate = {
-                generation: externalEditor.generation,
-                listId: externalEditor.sourceId,
-                taskId: externalEditor.external!.remoteId,
-                tags,
-              };
-              const previous = tagAttempt.current;
-              const command =
-                previous &&
-                JSON.stringify({ ...previous, commandId: undefined }) ===
-                  JSON.stringify(candidate)
-                  ? previous
-                  : { commandId: crypto.randomUUID(), ...candidate };
-              tagAttempt.current = command;
-              setExternalBusy(true);
-              try {
-                await gateway.saveExternalTaskTags(command);
-                setReading((current) =>
-                  current?.generation === command.generation
-                    ? {
-                        ...current,
-                        items: current.items.map((i) =>
-                          i.id === externalEditor.id
-                            ? { ...i, tags: command.tags }
-                            : i,
-                        ),
-                      }
-                    : current,
+          <div className="task-dialog-fields external-tag-editor">
+            <h3>{externalEditor.title}</h3>
+            <p>
+              Estas tags ficam somente no Gabio e serão removidas ao reconectar
+              ou desconectar o Google.
+            </p>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (
+                  externalBusy ||
+                  !gateway.saveExternalTaskTags ||
+                  !reading?.generation ||
+                  externalEditor.generation !== reading.generation
+                )
+                  return;
+                const tags = parseTagInput(
+                  new FormData(e.currentTarget).get("tags"),
                 );
-                setExternalEditor(null);
-              } catch {
-                setExternalNotice(
-                  "Não foi possível salvar. Revise as tags e tente novamente.",
-                );
-              } finally {
-                setExternalBusy(false);
-              }
-            }}
-          >
-            <label>
-              Tags separadas por vírgulas
-              <input
-                name="tags"
-                defaultValue={externalEditor.tags.join(", ")}
+                const candidate = {
+                  generation: externalEditor.generation,
+                  listId: externalEditor.sourceId,
+                  taskId: externalEditor.external!.remoteId,
+                  tags,
+                };
+                const previous = tagAttempt.current;
+                const command =
+                  previous &&
+                  JSON.stringify({ ...previous, commandId: undefined }) ===
+                    JSON.stringify(candidate)
+                    ? previous
+                    : { commandId: crypto.randomUUID(), ...candidate };
+                tagAttempt.current = command;
+                setExternalBusy(true);
+                try {
+                  await gateway.saveExternalTaskTags(command);
+                  setReading((current) =>
+                    current?.generation === command.generation
+                      ? {
+                          ...current,
+                          items: current.items.map((i) =>
+                            i.id === externalEditor.id
+                              ? { ...i, tags: command.tags }
+                              : i,
+                          ),
+                        }
+                      : current,
+                  );
+                  setExternalEditor(null);
+                } catch {
+                  setExternalNotice(
+                    "Não foi possível salvar. Revise as tags e tente novamente.",
+                  );
+                } finally {
+                  setExternalBusy(false);
+                }
+              }}
+            >
+              <TaskTagFields
+                tags={externalEditor.tags}
+                catalog={Array.from(
+                  new Set(
+                    (reading?.items ?? [])
+                      .filter((i) => i.source === "google_tasks")
+                      .flatMap((i) => i.tags),
+                  ),
+                ).map((name) => ({
+                  id: name,
+                  name,
+                  visibility: "private",
+                  version: 1,
+                }))}
+                visibility="private"
                 disabled={externalBusy}
               />
-            </label>
-            {externalNotice && <p role="alert">{externalNotice}</p>}
-            <button disabled={externalBusy}>Salvar tags locais</button>
-            <button
-              type="button"
-              disabled={externalBusy}
-              onClick={() => setExternalEditor(null)}
-            >
-              Cancelar
-            </button>
-          </form>
-        </section>
+              {externalNotice && <p role="alert">{externalNotice}</p>}
+              <button disabled={externalBusy}>Salvar tags locais</button>
+              <button
+                type="button"
+                disabled={externalBusy}
+                onClick={() => setExternalEditor(null)}
+              >
+                Cancelar
+              </button>
+            </form>
+          </div>
+        </TaskCardDialog>
       )}
       {view === "kanban" ? (
         <div
@@ -673,7 +925,7 @@ export function TaskViews({
                 </header>
                 <div className="task-column-cards">
                   {items.length ? (
-                    items.map(renderItem)
+                    items.map((item) => renderItem(item))
                   ) : (
                     <p className="task-column-empty">
                       {activeFilterCount
@@ -722,6 +974,12 @@ export function TaskViews({
               </button>
             </div>
           </header>
+          <div className="calendar-legend" aria-label="Legenda do calendário">
+            <span>○ Tarefa</span>
+            <span>✓ Concluída</span>
+            <span>▪ Compromisso</span>
+            <span>Horário de Brasília</span>
+          </div>
           <div className="task-calendar-layout">
             <div>
               <div className="calendar-weekdays" aria-hidden="true">
@@ -733,34 +991,89 @@ export function TaskViews({
                 {cells.map((date) => {
                   const items = selected.filter((i) => itemOnDay(i, date));
                   return (
-                    <button
-                      type="button"
+                    <div
                       className={`calendar-day${date.slice(0, 7) !== month ? " outside" : ""}${date === day ? " selected" : ""}`}
                       key={date}
-                      aria-pressed={date === day}
-                      aria-current={
-                        date === householdDate(new Date()) ? "date" : undefined
-                      }
-                      aria-label={`${labelDate(date, { dateStyle: "full" })}, ${items.length} itens`}
-                      onClick={() => {
-                        setDay(date);
-                        if (date.slice(0, 7) !== month)
-                          setMonth(date.slice(0, 7));
-                      }}
                     >
-                      <span>{Number(date.slice(-2))}</span>
-                      <span className="task-day-count">
-                        {items.length
-                          ? `${items.length} ${items.length === 1 ? "item" : "itens"}`
-                          : ""}
-                      </span>
-                      <span className="task-day-titles">
-                        {items.slice(0, 2).map((i) => (
-                          <small key={i.id}>{i.title}</small>
+                      <button
+                        type="button"
+                        className="calendar-day-select"
+                        aria-pressed={date === day}
+                        aria-current={
+                          date === householdDate(new Date())
+                            ? "date"
+                            : undefined
+                        }
+                        aria-label={`${labelDate(date, { dateStyle: "full" })}, ${items.length} itens`}
+                        onClick={() => {
+                          setDay(date);
+                          if (date.slice(0, 7) !== month)
+                            setMonth(date.slice(0, 7));
+                        }}
+                      >
+                        <span className="calendar-date-number">
+                          {Number(date.slice(-2))}
+                        </span>
+                        <span className="task-day-count">
+                          {items.length
+                            ? `${items.length} ${items.length === 1 ? "item" : "itens"}`
+                            : ""}
+                        </span>
+                      </button>
+                      <div className="task-day-titles">
+                        {items.slice(0, 2).map((item) => (
+                          <button
+                            type="button"
+                            key={item.id}
+                            className={`calendar-event ${item.source}`}
+                            disabled={
+                              !!item.task && canOpenTask?.(item.task) === false
+                            }
+                            onClick={() => {
+                              if (item.task && onOpenTask)
+                                onOpenTask(item.task);
+                              else if (item.external && reading?.generation)
+                                setExternalCard({
+                                  ...item,
+                                  generation: reading.generation,
+                                });
+                              else setDay(date);
+                            }}
+                            title={item.title}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="calendar-event-mark"
+                            >
+                              {item.status === "event"
+                                ? "▪"
+                                : item.status === "completed"
+                                  ? "✓"
+                                  : "○"}
+                            </span>
+                            {item.startsAt && (
+                              <time>
+                                {new Intl.DateTimeFormat("pt-BR", {
+                                  timeZone: "America/Bahia",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }).format(new Date(item.startsAt))}{" "}
+                              </time>
+                            )}
+                            {item.title}
+                          </button>
                         ))}
-                        {items.length > 2 && <small>+{items.length - 2}</small>}
-                      </span>
-                    </button>
+                        {items.length > 2 && (
+                          <button
+                            type="button"
+                            className="calendar-more"
+                            onClick={() => setDay(date)}
+                          >
+                            +{items.length - 2} mais
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -776,9 +1089,11 @@ export function TaskViews({
                   month: "long",
                 })}
               </h3>
-              <p>{dayItems.length} item(ns)</p>
+              <p className="task-day-total">
+                {dayItems.length} {dayItems.length === 1 ? "item" : "itens"}
+              </p>
               {dayItems.length ? (
-                dayItems.map(renderItem)
+                dayItems.map((item) => renderItem(item))
               ) : (
                 <p>
                   Nenhum item{" "}
@@ -792,7 +1107,7 @@ export function TaskViews({
           <details className="task-no-date">
             <summary>Sem data ou prazo ({noDate.length})</summary>
             {noDate.length ? (
-              noDate.map(renderItem)
+              noDate.map((item) => renderItem(item))
             ) : (
               <p>Nenhuma tarefa sem data corresponde à seleção.</p>
             )}
@@ -801,6 +1116,8 @@ export function TaskViews({
       )}
       {gateway.executeTagCommand && (
         <TagManager
+          open={tagsOpen}
+          onClose={() => setTagsOpen(false)}
           catalog={catalog}
           gateway={gateway}
           onChanged={onTagsChanged}
@@ -810,100 +1127,186 @@ export function TaskViews({
   );
 }
 function TagManager({
+  open,
+  onClose,
   catalog,
   gateway,
   onChanged,
 }: {
+  open: boolean;
+  onClose: () => void;
   catalog: TagRecord[];
   gateway: AppGateway;
   onChanged: () => Promise<unknown>;
 }) {
   const [selected, setSelected] = useState("");
+  const [search, setSearch] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const attempt = useRef<TagMutation | null>(null);
   const tag = catalog.find((t) => t.id === selected);
   return (
-    <details className="tag-manager glass-surface">
-      <summary>Gerenciar tags ({catalog.length})</summary>
-      <label>
-        Tag
-        <select
-          value={selected}
-          onChange={(e) => {
-            setSelected(e.target.value);
-            setNotice("");
-          }}
-          disabled={busy}
-        >
-          <option value="">Selecione uma tag</option>
-          {catalog.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name} · {t.visibility === "private" ? "Somente eu" : "Da casa"}
-            </option>
+    <TaskCardDialog
+      open={open}
+      title="Gerenciar tags"
+      onClose={onClose}
+      busy={busy}
+      className="tag-manager-dialog"
+    >
+      <div className="task-dialog-fields tag-manager">
+        <p>
+          Renomear atualiza a tag em todas as tarefas do mesmo escopo. Para
+          criar uma tag, abra um cartão.
+        </p>
+        <label>
+          Buscar tag
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        <div className="tag-catalog-list">
+          {(["household", "private"] as const).map((scope) => (
+            <section
+              key={scope}
+              aria-label={
+                scope === "private" ? "Tags somente minhas" : "Tags da casa"
+              }
+            >
+              <h3>{scope === "private" ? "Somente eu" : "Da casa"}</h3>
+              {catalog
+                .filter(
+                  (t) =>
+                    t.visibility === scope &&
+                    t.name
+                      .toLocaleLowerCase("pt-BR")
+                      .includes(search.toLocaleLowerCase("pt-BR")),
+                )
+                .map((t) => (
+                  <button
+                    type="button"
+                    key={t.id}
+                    disabled={busy}
+                    aria-pressed={selected === t.id}
+                    aria-label={`Editar tag ${t.name} · ${scope === "private" ? "Somente eu" : "Da casa"}`}
+                    onClick={() => {
+                      setSelected(t.id);
+                      setDeleting(false);
+                      setNotice("");
+                    }}
+                  >
+                    {t.name}
+                    <span aria-hidden="true">Editar →</span>
+                  </button>
+                ))}
+              {!catalog.some(
+                (t) =>
+                  t.visibility === scope &&
+                  t.name
+                    .toLocaleLowerCase("pt-BR")
+                    .includes(search.toLocaleLowerCase("pt-BR")),
+              ) && <p>Nenhuma tag encontrada neste escopo.</p>}
+            </section>
           ))}
-        </select>
-      </label>
-      {tag && (
-        <form
-          key={`${tag.id}:${tag.version}`}
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (busy) return;
-            const data = new FormData(e.currentTarget);
-            const deleting = data.get("delete") === "on";
-            const candidate = {
-              type: deleting ? ("delete" as const) : ("rename" as const),
-              tagId: tag.id,
-              expectedVersion: tag.version,
-              ...(deleting ? {} : { name: String(data.get("name")) }),
-            };
-            const old = attempt.current;
-            const command =
-              old &&
-              JSON.stringify({ ...old, commandId: undefined }) ===
-                JSON.stringify(candidate)
-                ? old
-                : ({
-                    commandId: crypto.randomUUID(),
-                    ...candidate,
-                  } as TagMutation);
-            attempt.current = command;
-            setBusy(true);
-            try {
-              await gateway.executeTagCommand!(command);
-              await onChanged();
-              setSelected("");
-              setNotice("Tag atualizada.");
-            } catch {
-              setNotice(
-                "Não foi possível atualizar. O nome pode já existir ou a tag ter mudado. Atualize as tarefas antes de tentar novamente.",
-              );
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          <label>
-            Novo nome
-            <input
-              name="name"
-              defaultValue={tag.name}
-              minLength={1}
-              maxLength={32}
-              required
-              disabled={busy}
-            />
-          </label>
-          <label className="task-check">
-            <input name="delete" type="checkbox" disabled={busy} />
-            Confirmo excluir esta tag e removê-la de todas as tarefas desse
-            escopo
-          </label>
-          <button disabled={busy}>Aplicar alteração</button>
-        </form>
-      )}
-      {notice && <p role="status">{notice}</p>}
-    </details>
+        </div>
+        {tag && (
+          <form
+            key={`${tag.id}:${tag.version}`}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (busy) return;
+              const data = new FormData(e.currentTarget);
+
+              const candidate = {
+                type: deleting ? ("delete" as const) : ("rename" as const),
+                tagId: tag.id,
+                expectedVersion: tag.version,
+                ...(deleting ? {} : { name: String(data.get("name")) }),
+              };
+              const old = attempt.current;
+              const command =
+                old &&
+                JSON.stringify({ ...old, commandId: undefined }) ===
+                  JSON.stringify(candidate)
+                  ? old
+                  : ({
+                      commandId: crypto.randomUUID(),
+                      ...candidate,
+                    } as TagMutation);
+              attempt.current = command;
+              setBusy(true);
+              try {
+                await gateway.executeTagCommand!(command);
+                await onChanged();
+                setSelected("");
+                setNotice("Tag atualizada.");
+              } catch {
+                setNotice(
+                  "Não foi possível atualizar. O nome pode já existir ou a tag ter mudado. Atualize as tarefas antes de tentar novamente.",
+                );
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <h3>
+              {tag.name} ·{" "}
+              {tag.visibility === "private" ? "Somente eu" : "Da casa"}
+            </h3>
+            <label>
+              Novo nome
+              <input
+                name="name"
+                defaultValue={tag.name}
+                minLength={1}
+                maxLength={32}
+                required={!deleting}
+                disabled={busy || deleting}
+              />
+            </label>
+            <div className="tag-manager-actions">
+              {!deleting ? (
+                <>
+                  <button type="submit" disabled={busy}>
+                    Salvar nome
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={busy}
+                    onClick={() => setDeleting(true)}
+                  >
+                    Excluir tag
+                  </button>
+                </>
+              ) : (
+                <div role="alert">
+                  <p>
+                    Excluir “{tag.name}” de todas as tarefas{" "}
+                    {tag.visibility === "private"
+                      ? "privadas deste catálogo"
+                      : "da casa"}
+                    ? As tarefas serão mantidas.
+                  </p>
+                  <button type="submit" disabled={busy}>
+                    Confirmar exclusão da tag
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDeleting(false)}
+                  >
+                    Manter tag
+                  </button>
+                </div>
+              )}
+            </div>
+          </form>
+        )}
+        {notice && <p role="status">{notice}</p>}
+      </div>
+    </TaskCardDialog>
   );
 }
