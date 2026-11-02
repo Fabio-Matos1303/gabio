@@ -1,4 +1,10 @@
 import type {
+  TagRecord,
+  TagMutation,
+  GoogleReading,
+  ExternalTagsCommand,
+} from "./task-views.js";
+import type {
   GoogleCalendarConnect,
   GoogleCalendarPreferences,
   GoogleCalendarStatus,
@@ -147,6 +153,13 @@ export interface AppGateway {
   repairGoogleCalendar(): Promise<void>;
   syncGoogleCalendar(): Promise<void>;
   disconnectGoogleCalendar(removeEvents: boolean): Promise<void>;
+  listTaskTags?(): Promise<TagRecord[]>;
+  executeTagCommand?(command: TagMutation): Promise<void>;
+  readGoogleItems?(
+    month: string,
+    continuation?: string,
+  ): Promise<GoogleReading>;
+  saveExternalTaskTags?(command: ExternalTagsCommand): Promise<void>;
   listTasks(): Promise<Task[]>;
   listCalendarEvents(): Promise<CalendarEvent[]>;
   executeTaskCommand(command: TaskGatewayCommand): Promise<TaskCommandReceipt>;

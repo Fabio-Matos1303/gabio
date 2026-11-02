@@ -1,4 +1,12 @@
 import {
+  tagRecordSchema,
+  tagMutationSchema,
+  googleReadingSchema,
+  externalTagsCommandSchema,
+  type TagMutation,
+  type ExternalTagsCommand,
+} from "./task-views.js";
+import {
   googleCalendarConnectSchema,
   googleCalendarPreferencesSchema,
   googleCalendarStatusSchema,
@@ -15,8 +23,6 @@ import {
   taskCommandReceiptSchema,
   taskGatewayCommandSchema,
   taskSchema,
-  taskRecurrenceSchema,
-  taskRecurrenceRuleSchema,
   type TaskGatewayCommand,
   type FinanceGatewayCommand,
   type FinanceCommandConfirmation,
@@ -95,25 +101,6 @@ const telegramPairingSchema = z
   })
   .strict();
 
-const taskRowSchema = z
-  .object({
-    id: z.string().uuid(),
-    household_id: z.string().uuid(),
-    owner_user_id: z.string().uuid().nullable(),
-    created_by: z.string().uuid(),
-    assignee_user_id: z.string().uuid().nullable(),
-    title: z.string(),
-    due_at: z.string().nullable(),
-    visibility: z.enum(["household", "private"]),
-    recurrence: taskRecurrenceSchema,
-    recurrence_rule: taskRecurrenceRuleSchema.nullable().default(null),
-    status: z.enum(["open", "in_progress", "completed", "cancelled"]),
-    completed_at: z.string().nullable(),
-    version: z.number().int().positive(),
-    created_at: z.string(),
-    updated_at: z.string(),
-  })
-  .strict();
 const calendarEventRowSchema = z
   .object({
     id: z.string().uuid(),
@@ -185,27 +172,6 @@ const financeRecurrenceRowSchema = z
     version: z.number().int().positive(),
   })
   .strict();
-
-function parseTaskRow(value: unknown) {
-  const row = taskRowSchema.parse(value);
-  return taskSchema.parse({
-    id: row.id,
-    householdId: row.household_id,
-    ownerUserId: row.owner_user_id,
-    createdBy: row.created_by,
-    assigneeUserId: row.assignee_user_id,
-    title: row.title,
-    dueAt: row.due_at,
-    visibility: row.visibility,
-    recurrence: row.recurrence,
-    recurrenceRule: row.recurrence_rule,
-    status: row.status,
-    completedAt: row.completed_at,
-    version: row.version,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  });
-}
 
 export function toSessionUser(user: User): SessionUser | null {
   const displayName =
@@ -474,19 +440,66 @@ export class SupabaseGateway implements AppGateway {
     if (error) throw friendlyError();
   }
 
-  async listTasks() {
-    const { data, error } = await this.configuredClient()
-      .from("tasks")
-      .select(
-        "id, household_id, owner_user_id, created_by, assignee_user_id, title, due_at, visibility, recurrence, recurrence_rule, status, completed_at, version, created_at, updated_at",
-      )
-      .order("created_at", { ascending: false });
-    if (error) throw friendlyError();
-    try {
-      return z.array(taskRowSchema).parse(data).map(parseTaskRow);
-    } catch {
-      throw friendlyError();
+  async listTaskTags() {
+    const result = [];
+    for (let offset = 0; offset <= 1000000; offset += 500) {
+      const { data, error } = await this.configuredClient()
+        .from("task_tags")
+        .select("id,name,visibility,version")
+        .order("name")
+        .order("id")
+        .range(offset, offset + 499);
+      if (error) throw friendlyError();
+      const page = z.array(tagRecordSchema).max(500).parse(data);
+      result.push(...page);
+      if (page.length < 500) return result;
     }
+    throw friendlyError();
+  }
+  async executeTagCommand(value: TagMutation) {
+    const { commandId, ...command } = tagMutationSchema.parse(value);
+    const { data, error } = await this.configuredClient().rpc(
+      "execute_tag_command",
+      { command_id: commandId, command },
+    );
+    if (error) throw friendlyError();
+    z.object({ ok: z.literal(true), replayed: z.boolean() })
+      .strict()
+      .parse(data);
+  }
+  async readGoogleItems(month: string, continuation?: string) {
+    z.string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+      .parse(month);
+    return googleReadingSchema.parse(
+      await this.calendarAction({
+        action: "read",
+        month,
+        ...(continuation
+          ? { continuation: z.string().max(8192).parse(continuation) }
+          : {}),
+      }),
+    );
+  }
+  async saveExternalTaskTags(value: ExternalTagsCommand) {
+    const command = externalTagsCommandSchema.parse(value);
+    googleCalendarOkSchema.parse(
+      await this.calendarAction({ action: "external_tags", ...command }),
+    );
+  }
+  async listTasks() {
+    const tasks = [];
+    for (let offset = 0; offset <= 1000000; offset += 500) {
+      const { data, error } = await this.configuredClient().rpc(
+        "list_tasks_page",
+        { page_offset: offset },
+      );
+      if (error) throw friendlyError();
+      const page = z.array(taskSchema).max(500).parse(data);
+      tasks.push(...page);
+      if (page.length < 500) return tasks;
+    }
+    throw friendlyError();
   }
 
   async listCalendarEvents(): Promise<CalendarEvent[]> {

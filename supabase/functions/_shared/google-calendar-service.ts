@@ -1,3 +1,4 @@
+import { GOOGLE_READ_SCOPES, readGoogleItems } from "./google-reading.ts";
 import {
   authorizationUrl,
   CALENDAR_SCOPE,
@@ -14,6 +15,7 @@ export type Rpc = (
 ) => Promise<unknown>;
 export type CalendarConfig = {
   enabled: boolean;
+  readingEnabled?: boolean;
   appUrl: string;
   redirectUri: string;
   clientId: string;
@@ -183,12 +185,18 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
         )
           throw new Error("invalid verifier");
         const preferences = parsePreferences(pending.preferences);
+        if (preferences.readSources && !deps.config.readingEnabled)
+          throw new Error("reading disabled");
         const tokens = await provider.exchange(
           deps.config.clientId,
           deps.config.clientSecret,
           deps.config.redirectUri,
           code,
           decoded.verifier,
+          [
+            CALENDAR_SCOPE,
+            ...(preferences.readSources ? GOOGLE_READ_SCOPES : []),
+          ],
         );
         const targets = await deps.rpc("gc_oauth_target_ids", {
           actor: pending.user_id,
@@ -213,7 +221,7 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
           actor: pending.user_id,
           household: pending.household_id,
           token_cipher: cipher,
-          scopes: [CALENDAR_SCOPE],
+          scopes: tokens.scopes ?? [CALENDAR_SCOPE],
           preferences,
           ticket_hash: await hashSecret(ticket),
         });
@@ -247,6 +255,65 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
     } catch {
       return response({ error: "Dados inválidos." }, 400);
     }
+    if (body.action === "read" || body.action === "external_tags") {
+      if (!ready(deps.config))
+        return response({ error: "Integração indisponível." }, 503);
+      try {
+        if (body.action === "read") {
+          if (
+            !["action,month", "action,continuation,month"].includes(
+              Object.keys(body).sort().join(","),
+            ) ||
+            (body.continuation !== undefined &&
+              (typeof body.continuation !== "string" ||
+                body.continuation.length > 8192)) ||
+            typeof body.month !== "string"
+          )
+            return response({ error: "Dados inválidos." }, 400);
+          return response(
+            await readGoogleItems(
+              deps,
+              actor,
+              body.month,
+              body.continuation as string | undefined,
+            ),
+          );
+        }
+        if (
+          !deps.config.readingEnabled ||
+          Object.keys(body).sort().join(",") !==
+            "action,commandId,generation,listId,tags,taskId" ||
+          !uuidPattern.test(String(body.commandId)) ||
+          !uuidPattern.test(String(body.generation)) ||
+          typeof body.listId !== "string" ||
+          !body.listId ||
+          body.listId.length > 1024 ||
+          typeof body.taskId !== "string" ||
+          !body.taskId ||
+          body.taskId.length > 1024 ||
+          !Array.isArray(body.tags) ||
+          body.tags.length > 10 ||
+          body.tags.some(
+            (t) => typeof t !== "string" || !t.trim() || t.length > 32,
+          )
+        )
+          return response({ error: "Dados inválidos." }, 400);
+        await deps.rpc("gc_save_external_tags", {
+          actor,
+          command_id: body.commandId,
+          generation: body.generation,
+          list_id: body.listId,
+          task_id: body.taskId,
+          tags: body.tags,
+        });
+        return response({ ok: true });
+      } catch {
+        return response(
+          { error: "Não foi possível consultar ou atualizar os itens Google." },
+          400,
+        );
+      }
+    }
     const allowed =
       body.action === "connect" || body.action === "preferences"
         ? [
@@ -255,6 +322,7 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
             "exportPrivate",
             "reminderMinutes",
             "importUpcoming",
+            "readSources",
           ]
         : body.action === "disconnect"
           ? ["action", "removeEvents"]
@@ -300,6 +368,11 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
       }
       if (body.action === "connect") {
         const preferences = parsePreferences(body);
+        if (preferences.readSources && !deps.config.readingEnabled)
+          return response(
+            { error: "Leitura do Google ainda não habilitada." },
+            400,
+          );
         const state = randomSecret();
         const verifier = randomSecret();
         const stateHash = await hashSecret(state);
@@ -319,6 +392,10 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
             deps.config.redirectUri,
             state,
             await hashSecret(verifier),
+            [
+              CALENDAR_SCOPE,
+              ...(preferences.readSources ? GOOGLE_READ_SCOPES : []),
+            ],
           ),
         });
       }

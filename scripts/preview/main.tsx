@@ -41,7 +41,8 @@ let tasks: Task[] = [
     status,
     visibility: "household",
     recurrence: "none",
-    dueAt: null,
+    dueAt: index === 0 ? null : `2026-11-0${index + 1}T12:00:00Z`,
+    tags: index % 2 === 0 ? ["Casa"] : ["Manutenção"],
     completedAt: status === "completed" ? new Date().toISOString() : null,
     version: 1,
     createdAt: new Date().toISOString(),
@@ -51,6 +52,21 @@ let tasks: Task[] = [
 const unavailable = async () => {
   throw new Error("Não disponível nesta prévia sintética");
 };
+let catalog = [
+  {
+    id: "80000000-0000-4000-8000-000000000001",
+    name: "Casa",
+    visibility: "household" as "household" | "private",
+    version: 1,
+  },
+  {
+    id: "80000000-0000-4000-8000-000000000002",
+    name: "Manutenção",
+    visibility: "household" as "household" | "private",
+    version: 1,
+  },
+];
+const tagReceipts = new Set<string>();
 const gateway: AppGateway = {
   isConfigured: true,
   getSession: async () => user,
@@ -77,6 +93,102 @@ const gateway: AppGateway = {
   getTelegramConnection: async () => null,
   requestTelegramPairing: unavailable,
   revokeTelegramConnection: async () => {},
+  listTaskTags: async () => {
+    for (const t of tasks)
+      for (const name of t.tags ?? [])
+        if (
+          !catalog.some((g) => g.name === name && g.visibility === t.visibility)
+        )
+          catalog.push({
+            id: crypto.randomUUID(),
+            name,
+            visibility: t.visibility,
+            version: 1,
+          });
+    return catalog.map((t) => ({ ...t }));
+  },
+  executeTagCommand: async (command) => {
+    if (tagReceipts.has(command.commandId)) return;
+    const g = catalog.find(
+      (t) => t.id === command.tagId && t.version === command.expectedVersion,
+    );
+    if (!g) throw new Error("Tag alterada");
+    tasks = tasks.map((t) =>
+      t.visibility === g.visibility && (t.tags ?? []).includes(g.name)
+        ? {
+            ...t,
+            tags:
+              command.type === "delete"
+                ? (t.tags ?? []).filter((n) => n !== g.name)
+                : (t.tags ?? []).map((n) => (n === g.name ? command.name : n)),
+            version: t.version + 1,
+          }
+        : t,
+    );
+    catalog =
+      command.type === "delete"
+        ? catalog.filter((t) => t.id !== g.id)
+        : catalog.map((t) =>
+            t.id === g.id
+              ? { ...t, name: command.name, version: t.version + 1 }
+              : t,
+          );
+    tagReceipts.add(command.commandId);
+  },
+  readGoogleItems: async () => ({
+    state: "connected",
+    generation: "90000000-0000-4000-8000-000000000001",
+    checkedAt: new Date().toISOString(),
+    tasksState: "ok",
+    calendarState: "ok",
+    sources: [
+      {
+        id: "synthetic-list",
+        name: "Lista de exemplo",
+        source: "google_tasks",
+      },
+      {
+        id: "synthetic-calendar",
+        name: "Agenda de exemplo",
+        source: "google_calendar",
+      },
+    ],
+    items: [
+      {
+        id: "synthetic-task",
+        remoteId: "synthetic-task",
+        source: "google_tasks",
+        sourceId: "synthetic-list",
+        sourceName: "Lista de exemplo",
+        title: "Comprar materiais de organização",
+        status: "open",
+        date: "2026-11-02",
+        startsAt: null,
+        endsAt: null,
+        endDate: null,
+        url: "https://tasks.google.com/",
+        updatedAt: "2026-11-02T12:00:00Z",
+        tags: ["Compras"],
+      },
+      {
+        id: "synthetic-event",
+        remoteId: "synthetic-event",
+        source: "google_calendar",
+        sourceId: "synthetic-calendar",
+        sourceName: "Agenda de exemplo",
+        title: "Visita de manutenção",
+        status: "event",
+        date: null,
+        startsAt: "2026-11-02T18:00:00Z",
+        endsAt: "2026-11-02T19:00:00Z",
+        endDate: null,
+        url: "https://calendar.google.com/",
+        updatedAt: "2026-11-02T12:00:00Z",
+        tags: [],
+      },
+    ],
+  }),
+  saveExternalTaskTags: async () => {},
   listTasks: async () => tasks,
   listCalendarEvents: async () => [],
   loadFinance: async () => ({
@@ -109,9 +221,11 @@ const gateway: AppGateway = {
       const fields =
         command.type === "update"
           ? {
+              tags: command.payload.tags ?? old.tags,
               title: command.payload.title ?? old.title,
               dueAt: command.payload.dueAt,
               recurrence: command.payload.recurrence ?? old.recurrence,
+              recurrenceRule: command.payload.recurrenceRule ?? null,
               assigneeUserId: command.payload.assigneeUserId ?? null,
               visibility: command.payload.visibility ?? old.visibility,
             }

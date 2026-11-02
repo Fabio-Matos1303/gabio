@@ -89,6 +89,22 @@ export const commandSourceSchema = z.enum([
   "scheduler",
 ]);
 
+export const taskTagsSchema = z
+  .array(
+    z
+      .string()
+      .trim()
+      .transform((value) => value.replace(/\s+/g, " "))
+      .pipe(z.string().min(1).max(32)),
+  )
+  .max(10)
+  .refine(
+    (tags) =>
+      new Set(tags.map((tag) => tag.toLocaleLowerCase("pt-BR"))).size ===
+      tags.length,
+    { message: "duplicate tags" },
+  );
+
 const taskPayloadSchema = z
   .object({
     title: z.string().trim().min(1).max(240),
@@ -97,6 +113,7 @@ const taskPayloadSchema = z
     visibility: visibilitySchema.default("household"),
     recurrence: taskRecurrenceSchema.default("none"),
     recurrenceRule: taskRecurrenceRuleSchema.nullable().optional(),
+    tags: taskTagsSchema.optional(),
   })
   .strict()
   .superRefine(validateTaskRecurrence);
@@ -109,6 +126,7 @@ const taskMutableFieldsSchema = z
     visibility: visibilitySchema,
     recurrence: taskRecurrenceSchema,
     recurrenceRule: taskRecurrenceRuleSchema.nullable().optional(),
+    tags: taskTagsSchema.optional(),
   })
   .strict();
 
@@ -183,6 +201,7 @@ export const taskSchema = z
     visibility: visibilitySchema,
     recurrence: taskRecurrenceSchema,
     recurrenceRule: taskRecurrenceRuleSchema.nullable().optional(),
+    tags: taskTagsSchema.optional(),
     status: taskStatusSchema,
     completedAt: z.string().datetime({ offset: true }).nullable(),
     version: z.number().int().positive(),

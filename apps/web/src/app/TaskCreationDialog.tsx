@@ -1,4 +1,6 @@
-import { useEffect, useId, useRef } from "react";
+import type { TagRecord } from "../lib/task-views.js";
+import { TaskTagFields } from "./TaskTagFields.js";
+import { useEffect, useId, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { HouseholdContext } from "../lib/app-gateway.js";
 import { TaskRecurrenceFields } from "./TaskRecurrenceFields.js";
@@ -13,6 +15,7 @@ export function TaskCreationDialog({
   household,
   feedback,
   resetKey,
+  catalog = [],
 }: {
   open: boolean;
   busy: boolean;
@@ -23,9 +26,14 @@ export function TaskCreationDialog({
   household: HouseholdContext;
   feedback: ReactNode;
   resetKey: number;
+  catalog?: TagRecord[];
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const id = useId();
+  const [visibility, setVisibility] = useState<"household" | "private">(
+    "household",
+  );
+  useEffect(() => setVisibility("household"), [resetKey]);
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
@@ -111,9 +119,22 @@ export function TaskCreationDialog({
             </select>
           </label>
           <TaskRecurrenceFields disabled={busy} />
+          <TaskTagFields
+            key={resetKey + visibility}
+            catalog={catalog}
+            visibility={visibility}
+            disabled={busy}
+          />
           <label>
             Quem pode ver
-            <select name="visibility" defaultValue="household" disabled={busy}>
+            <select
+              name="visibility"
+              value={visibility}
+              onChange={(event) =>
+                setVisibility(event.target.value as "household" | "private")
+              }
+              disabled={busy}
+            >
               <option value="household">Todos da casa</option>
               <option value="private">Somente eu</option>
             </select>

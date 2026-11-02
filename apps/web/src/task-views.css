@@ -1,0 +1,319 @@
+.task-views {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.task-views button,
+.task-views input,
+.task-views select {
+  font: inherit;
+  color: #18342a;
+}
+.task-views button {
+  border: 1px solid #7b8c7d;
+  border-radius: 12px;
+  background: #faf8f2;
+  padding: 10px 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.task-views input,
+.task-views select {
+  border: 1px solid #7b8c7d;
+  border-radius: 12px;
+  background: #fffefa;
+  padding: 10px 12px;
+}
+.task-views label {
+  font-size: 14px;
+  font-weight: 500;
+}
+.task-views button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+.task-view-switch {
+  padding: 4px;
+  border: 1px solid #7b8c7d;
+  border-radius: 999px;
+  width: fit-content;
+}
+.task-view-switch button {
+  border-radius: 999px;
+  border-color: transparent;
+}
+.task-views .task-presets button {
+  font-size: 14px;
+  padding: 8px 10px;
+}
+.task-views .task-calendar {
+  padding-inline: 0;
+}
+.task-calendar > .calendar-toolbar,
+.task-calendar .task-day-list,
+.task-calendar > .task-no-date {
+  margin-inline: 12px;
+}
+.task-views .task-calendar .calendar-weekdays,
+.task-views .task-calendar .calendar-grid {
+  gap: 0;
+}
+.task-views .task-calendar .calendar-day {
+  border-radius: 6px;
+  min-height: 68px;
+}
+.task-view-toolbar,
+.task-calendar,
+.tag-manager {
+  padding: 16px;
+  min-width: 0;
+}
+.task-view-toolbar {
+  display: grid;
+  gap: 16px;
+}
+.task-view-toolbar label,
+.task-filter-grid fieldset,
+.task-tag-fields,
+.tag-manager label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.task-view-toolbar input,
+.task-view-toolbar select,
+.task-tag-fields input,
+.tag-manager input,
+.tag-manager select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+.task-view-switch,
+.task-presets,
+.task-results,
+.task-tags,
+.tag-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.task-view-switch button,
+.task-presets button,
+.tag-suggestions button,
+.task-results button {
+  min-height: 44px;
+}
+.task-views button[aria-pressed="true"] {
+  background: var(--color-selection, #dfe7d8);
+  border-color: #18342a;
+  box-shadow: inset 0 -2px #18342a;
+}
+.task-views summary {
+  cursor: pointer;
+  min-height: 44px;
+  align-content: center;
+}
+.task-filter-grid {
+  display: grid;
+  gap: 16px;
+  padding-top: 16px;
+}
+.task-filter-grid fieldset,
+.task-tag-fields {
+  border: 1px solid #a4afa5;
+  border-radius: 12px;
+  padding: 12px;
+}
+.task-filter-grid .task-check,
+.task-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+.task-check input[type="checkbox"] {
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+  flex: none;
+}
+.task-tag-fields small,
+.task-filter-grid small {
+  color: #526158;
+}
+.task-tags span {
+  border: 1px solid #7b8c7d;
+  background: #e8ecdf;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.task-tags {
+  margin-block: 8px;
+}
+.task-google-state {
+  padding: 0 8px;
+  overflow-wrap: anywhere;
+}
+.task-google-state p {
+  margin: 8px 0;
+}
+.task-calendar-layout {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.task-calendar .calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+.task-calendar .calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+  font-size: 12px;
+  text-align: center;
+}
+.task-calendar .calendar-day {
+  min-width: 0;
+  min-height: 64px;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  border-radius: 8px;
+}
+.task-day-count {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.task-day-titles {
+  display: none;
+}
+.task-calendar .calendar-day.selected {
+  outline: 2px solid #18342a;
+  outline-offset: -2px;
+  background: #dfe7d8;
+}
+.task-calendar .calendar-day[aria-current="date"] > span:first-child {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.task-calendar .calendar-day.outside {
+  color: #526158;
+  opacity: 1;
+  background: #f4f1e8;
+}
+.task-day-list {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.task-day-list h3 {
+  margin: 0;
+  text-transform: capitalize;
+}
+.task-no-date {
+  margin-top: 20px;
+}
+.task-no-date .task-card {
+  margin-top: 12px;
+}
+.external-task {
+  overflow-wrap: anywhere;
+  align-content: start;
+  gap: 8px;
+}
+.external-task p {
+  margin: 0;
+  font-size: 14px;
+}
+.external-task .task-tags:empty {
+  display: none;
+}
+.external-task a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: underline;
+}
+.external-tag-editor {
+  padding: 16px;
+}
+.external-tag-editor form,
+.tag-manager form {
+  display: grid;
+  gap: 12px;
+}
+.external-tag-editor input {
+  width: 100%;
+  min-height: 44px;
+}
+.task-views :focus-visible {
+  outline: 3px solid #18342a;
+  outline-offset: 3px;
+}
+@media (min-width: 768px) {
+  .task-view-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+    align-items: end;
+  }
+  .task-view-toolbar > .task-presets,
+  .task-view-toolbar > details {
+    grid-column: 1/-1;
+  }
+  .task-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .task-view-toolbar,
+  .task-calendar {
+    padding: 20px;
+  }
+  .task-calendar .calendar-day {
+    min-height: 88px;
+    padding: 8px;
+  }
+  .task-day-titles {
+    display: grid;
+    max-width: 100%;
+    font-size: 12px;
+  }
+  .task-day-titles small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .task-view-switch {
+    justify-self: start;
+  }
+}
+@media (min-width: 1100px) {
+  .task-calendar-layout {
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  }
+  .task-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .task-calendar .calendar-day {
+    min-height: 100px;
+  }
+}
+
+.tag-suggestions button {
+  font: inherit;
+  color: #18342a;
+  border: 1px solid #7b8c7d;
+  border-radius: 999px;
+  background: #faf8f2;
+  padding: 8px 12px;
+  min-height: 44px;
+}

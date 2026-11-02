@@ -37,6 +37,7 @@ export function GoogleCalendarSettings({
   const [household, setHousehold] = useState(true);
   const [privateTasks, setPrivateTasks] = useState(false);
   const [reminder, setReminder] = useState("none");
+  const [readSources, setReadSources] = useState(false);
   const [importUpcoming, setImportUpcoming] = useState(true);
   const [removeEvents, setRemoveEvents] = useState(false);
   const [abandonCleanup, setAbandonCleanup] = useState(false);
@@ -179,6 +180,7 @@ export function GoogleCalendarSettings({
           await gateway.connectGoogleCalendar({
             ...parsed.data,
             importUpcoming,
+            ...(readSources ? { readSources: true } : {}),
           }),
         );
         if (live.current) setAuthorizationUrl(result.authorizationUrl);
@@ -214,6 +216,45 @@ export function GoogleCalendarSettings({
                   : "Desconectado"}
         </span>
       </div>
+      <section className="google-reading-consent">
+        <h3>Ler Tasks e Agenda no Gabio</h3>
+        <p>
+          Consulte suas tarefas e eventos pessoais no calendário do Gabio. A
+          leitura não altera itens no Google. Reconectar remove as tags locais
+          de tarefas Google da conexão anterior.
+        </p>
+        <label className="calendar-checkbox">
+          <input
+            type="checkbox"
+            checked={readSources}
+            disabled={busy}
+            onChange={(e) => setReadSources(e.target.checked)}
+          />
+          Autorizar leitura de Google Tasks e dos eventos e listas de
+          calendários
+        </label>
+        <button
+          type="button"
+          disabled={disabled || !readSources}
+          onClick={() =>
+            void run(async () => {
+              const result = googleAuthorizationSchema.parse(
+                await gateway.connectGoogleCalendar({
+                  exportHousehold: household,
+                  exportPrivate: privateTasks,
+                  reminderMinutes:
+                    reminder === "none" ? null : Number(reminder),
+                  importUpcoming: false,
+                  readSources: true,
+                }),
+              );
+              if (live.current) setAuthorizationUrl(result.authorizationUrl);
+            })
+          }
+        >
+          Conectar leitura do Google
+        </button>
+      </section>
       <p className="muted">
         Veja os prazos das tarefas na sua conta Google. Cada pessoa conecta a
         própria conta. A gestão das tarefas continua no Gabio.

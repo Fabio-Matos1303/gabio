@@ -8,11 +8,13 @@ export type CalendarPreferences = {
   exportPrivate: boolean;
   reminderMinutes: number | null;
   importUpcoming: boolean;
+  readSources?: boolean;
 };
 export type StoredTokens = {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
+  scopes?: string[];
 };
 export type TaskProjection = {
   id: string;
@@ -59,7 +61,12 @@ export function parsePreferences(value: unknown): CalendarPreferences {
       typeof item.importUpcoming !== "boolean")
   )
     throw new ProviderError("invalid_response");
+  if (item.readSources !== undefined && typeof item.readSources !== "boolean")
+    throw new ProviderError("invalid_response");
   return {
+    ...(item.readSources === undefined
+      ? {}
+      : { readSources: item.readSources as boolean }),
     exportHousehold: item.exportHousehold,
     exportPrivate: item.exportPrivate,
     reminderMinutes: item.reminderMinutes as number | null,
@@ -91,6 +98,9 @@ export function parseTokens(
   )
     throw new ProviderError("reconnect");
   return {
+    ...(typeof token.scope === "string"
+      ? { scopes: token.scope.split(" ") }
+      : {}),
     accessToken: token.access_token,
     refreshToken,
     expiresAt: Date.now() + token.expires_in * 1000,
@@ -178,13 +188,14 @@ export function authorizationUrl(
   redirectUri: string,
   state: string,
   challenge: string,
+  scopes: string[] = [CALENDAR_SCOPE],
 ): string {
   const url = new URL(GOOGLE_AUTH_URL);
   url.search = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: CALENDAR_SCOPE,
+    scope: scopes.join(" "),
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
@@ -245,7 +256,9 @@ export class GoogleCalendarProvider {
     try {
       return await this.fetcher(url, {
         ...init,
-        signal: controller.signal,
+        signal: init.signal
+          ? AbortSignal.any([init.signal, controller.signal])
+          : controller.signal,
         redirect: "error",
       });
     } catch {
@@ -301,6 +314,7 @@ export class GoogleCalendarProvider {
     redirectUri: string,
     code: string,
     verifier: string,
+    requiredScopes: string[] = [CALENDAR_SCOPE],
   ): Promise<StoredTokens> {
     const response = await this.request(TOKEN_URL, {
       method: "POST",
@@ -318,7 +332,9 @@ export class GoogleCalendarProvider {
     const data = await this.json(response);
     if (
       typeof data.scope !== "string" ||
-      !data.scope.split(" ").includes(CALENDAR_SCOPE)
+      !requiredScopes.every((scope) =>
+        String(data.scope).split(" ").includes(scope),
+      )
     )
       throw new ProviderError("reconnect");
     return parseTokens(data);

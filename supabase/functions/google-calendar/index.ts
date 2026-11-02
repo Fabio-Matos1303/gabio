@@ -13,6 +13,7 @@ Deno.serve(
   createCalendarHandler({
     config: {
       enabled: Deno.env.get("GOOGLE_CALENDAR_ENABLED") === "true",
+      readingEnabled: Deno.env.get("GOOGLE_READING_ENABLED") === "true",
       appUrl: Deno.env.get("PUBLIC_APP_URL") ?? "",
       redirectUri:
         Deno.env.get("GOOGLE_CALENDAR_REDIRECT_URI") ??

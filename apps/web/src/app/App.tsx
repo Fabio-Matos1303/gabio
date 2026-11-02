@@ -1,3 +1,6 @@
+import { TaskViews } from "./TaskViews.js";
+import { TaskTagFields, parseTagInput } from "./TaskTagFields.js";
+import type { TagRecord } from "../lib/task-views.js";
 import { GoogleCalendarSettings } from "./GoogleCalendarSettings.js";
 import {
   taskCreateCommandSchema,
@@ -465,12 +468,20 @@ function TaskPanel({
   household: HouseholdContext;
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [catalog, setCatalog] = useState<TagRecord[]>([]);
+  const [editingVisibility, setEditingVisibility] = useState<
+    "household" | "private"
+  >("household");
+
   const [queued, setQueued] = useState<QueuedTaskCommand[]>([]);
   const [notice, setNotice] = useState<Notice>(null);
   const [creationOpen, setCreationOpen] = useState(false);
   const [creationTitle, setCreationTitle] = useState("");
   const [creationSequence, setCreationSequence] = useState(0);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  useEffect(() => {
+    setEditingVisibility(editingTask?.visibility ?? "household");
+  }, [editingTask]);
   const [savingTask, setSavingTask] = useState(false);
   const [sendingTask, setSendingTask] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState(true);
@@ -713,12 +724,13 @@ function TaskPanel({
         visibility,
         recurrence,
         recurrenceRule,
+        tags: parseTagInput(data.get("tags")),
       },
     });
     if (!parsed.success) {
       setNotice({
         kind: "error",
-        text: "Revise o título, o prazo e a recorrência. A primeira data deve corresponder aos dias escolhidos e não ultrapassar o fim da repetição.",
+        text: "Revise o título, as tags (até 10, únicas, com até 32 caracteres), o prazo e a recorrência. A primeira data deve corresponder aos dias escolhidos e não ultrapassar o fim da repetição.",
       });
       return;
     }
@@ -752,6 +764,7 @@ function TaskPanel({
         recurrence: String(form.get("recurrence")),
         recurrenceRule: parseRecurrenceRule(form),
         visibility: String(form.get("visibility")),
+        tags: parseTagInput(form.get("tags")),
       },
     });
     const updatedTask = parsed.success
@@ -763,6 +776,7 @@ function TaskPanel({
           recurrence: parsed.data.payload.recurrence,
           recurrenceRule: parsed.data.payload.recurrenceRule,
           visibility: parsed.data.payload.visibility,
+          tags: parsed.data.payload.tags,
         })
       : null;
     if (
@@ -776,7 +790,7 @@ function TaskPanel({
     ) {
       setNotice({
         kind: "error",
-        text: "Revise os detalhes: o prazo deve corresponder aos dias escolhidos e não ultrapassar o fim da repetição. Tarefas privadas só podem ser atribuídas a você.",
+        text: "Revise as tags (até 10, únicas, com até 32 caracteres) e os detalhes: o prazo deve corresponder aos dias escolhidos e não ultrapassar o fim da repetição. Tarefas privadas só podem ser atribuídas a você.",
       });
       return;
     }
@@ -789,6 +803,22 @@ function TaskPanel({
   }
 
   const displayedTasks = projectTaskCommands(tasks, queued, context);
+  const loadCatalog = useCallback(async () => {
+    if (gateway.listTaskTags) setCatalog(await gateway.listTaskTags());
+  }, [gateway]);
+  useEffect(() => {
+    let active = true;
+    if (gateway.listTaskTags)
+      gateway
+        .listTaskTags()
+        .then((tags) => {
+          if (active) setCatalog(tags);
+        })
+        .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [gateway, tasks]);
   const pendingIds = new Set(
     queued
       .filter((entry) => entry.status === "pending")
@@ -807,29 +837,161 @@ function TaskPanel({
       text: "Alteração em conflito descartada. Revise a tarefa atual antes de editar novamente.",
     });
   }
-  const columns: Array<{
-    status: Task["status"];
-    title: string;
-    description: string;
-  }> = [
-    {
-      status: "open",
-      title: "A fazer",
-      description: "O que ainda precisa de atenção",
-    },
-    {
-      status: "in_progress",
-      title: "Em andamento",
-      description: "O que está sendo feito agora",
-    },
-    {
-      status: "completed",
-      title: "Concluídas",
-      description: "O que a casa já resolveu",
-    },
-  ];
   const memberName = (userId: string | null) =>
     household.members.find((member) => member.userId === userId)?.displayName;
+
+  function renderTaskCard(task: Task) {
+    const assignee = memberName(task.assigneeUserId);
+    const dueDate = task.dueAt ? new Date(task.dueAt) : null;
+    const overdue =
+      (task.status === "open" || task.status === "in_progress") &&
+      dueDate !== null &&
+      dueDate.getTime() < Date.now();
+    return (
+      <article className="task-card" key={task.id}>
+        <div className="task-card-heading">
+          <strong>{task.title}</strong>
+          <span className={`visibility-chip ${task.visibility}`}>
+            {task.visibility === "private" ? "Somente eu" : "Da casa"}
+          </span>
+        </div>
+        <div className="task-tags">
+          {(task.tags ?? []).map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div>
+        <div className="task-card-meta">
+          {assignee && <span>{assignee}</span>}
+          {dueDate && (
+            <time
+              className={overdue ? "overdue" : undefined}
+              dateTime={task.dueAt ?? undefined}
+            >
+              {overdue ? "Atrasada · " : ""}
+              {new Intl.DateTimeFormat("pt-BR", {
+                timeZone: "America/Bahia",
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(dueDate)}
+            </time>
+          )}
+          {task.recurrence !== "none" && (
+            <span>
+              {taskRecurrenceLabel(task.recurrence, task.recurrenceRule)}
+            </span>
+          )}
+        </div>
+        {pendingIds.has(task.id) && (
+          <p role="status">Aguardando sincronização</p>
+        )}
+        <fieldset
+          className="task-actions"
+          disabled={sendingTask || pendingIds.has(task.id)}
+        >
+          {(task.status === "open" || task.status === "in_progress") && (
+            <button type="button" onClick={() => setEditingTask(task)}>
+              Editar
+            </button>
+          )}
+          {task.status === "open" ? (
+            <>
+              <button
+                className="start-task"
+                type="button"
+                onClick={() =>
+                  void run({
+                    commandId: crypto.randomUUID(),
+                    type: "set_status",
+                    payload: {
+                      taskId: task.id,
+                      expectedVersion: task.version,
+                      status: "in_progress",
+                    },
+                  })
+                }
+              >
+                Iniciar
+              </button>
+              <button
+                type="button"
+                className="complete-task"
+                onClick={() =>
+                  void run({
+                    commandId: crypto.randomUUID(),
+                    type: "set_status",
+                    payload: {
+                      taskId: task.id,
+                      expectedVersion: task.version,
+                      status: "completed",
+                    },
+                  })
+                }
+              >
+                Concluir
+              </button>
+            </>
+          ) : task.status === "in_progress" ? (
+            <>
+              <button
+                className="complete-task"
+                type="button"
+                onClick={() =>
+                  void run({
+                    commandId: crypto.randomUUID(),
+                    type: "set_status",
+                    payload: {
+                      taskId: task.id,
+                      expectedVersion: task.version,
+                      status: "completed",
+                    },
+                  })
+                }
+              >
+                Concluir
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void run({
+                    commandId: crypto.randomUUID(),
+                    type: "set_status",
+                    payload: {
+                      taskId: task.id,
+                      expectedVersion: task.version,
+                      status: "open",
+                    },
+                  })
+                }
+              >
+                Voltar
+              </button>
+            </>
+          ) : task.recurrence === "none" ? (
+            <button
+              type="button"
+              onClick={() =>
+                void run({
+                  commandId: crypto.randomUUID(),
+                  type: "set_status",
+                  payload: {
+                    taskId: task.id,
+                    expectedVersion: task.version,
+                    status: "open",
+                  },
+                })
+              }
+            >
+              Reabrir
+            </button>
+          ) : (
+            <span className="task-card-note">Tarefa recorrente concluída</span>
+          )}
+        </fieldset>
+      </article>
+    );
+  }
 
   return (
     <section
@@ -903,13 +1065,39 @@ function TaskPanel({
                 ))}
               </select>
             </label>
+            <TaskTagFields
+              key={editingTask.id + editingVisibility}
+              tags={
+                editingVisibility === editingTask.visibility
+                  ? (editingTask.tags ?? [])
+                  : []
+              }
+              catalog={catalog}
+              visibility={editingVisibility}
+              disabled={
+                savingTask ||
+                sendingTask ||
+                editingVisibility !== editingTask.visibility
+              }
+            />
+            {editingVisibility !== editingTask.visibility && (
+              <p role="status">
+                As tags serão removidas ao mudar a visibilidade. Salve e reabra
+                para selecionar tags do novo escopo.
+              </p>
+            )}
             <TaskRecurrenceFields task={editingTask} disabled={sendingTask} />
             <label>
               Quem pode ver
               <select
                 disabled={sendingTask}
                 name="visibility"
-                defaultValue={editingTask.visibility}
+                value={editingVisibility}
+                onChange={(event) =>
+                  setEditingVisibility(
+                    event.target.value as "household" | "private",
+                  )
+                }
               >
                 <option value="household">Todos da casa</option>
                 <option
@@ -995,199 +1183,21 @@ function TaskPanel({
         }}
         onSubmit={createTask}
         household={household}
+        catalog={catalog}
         feedback={<NoticeBox notice={notice} />}
       />
-      <div className="task-board" role="region" aria-label="Quadro de tarefas">
-        {columns.map((column) => {
-          const columnTasks = displayedTasks.filter(
-            (task) => task.status === column.status,
-          );
-          return (
-            <section
-              className={`task-column ${column.status}`}
-              aria-labelledby={`task-column-${column.status}`}
-              key={column.status}
-            >
-              <header className="task-column-header">
-                <div>
-                  <h3 id={`task-column-${column.status}`}>{column.title}</h3>
-                  <p>{column.description}</p>
-                </div>
-                <span aria-label={`${columnTasks.length} tarefa(s)`}>
-                  {columnTasks.length}
-                </span>
-              </header>
-              <div className="task-column-cards">
-                {columnTasks.length === 0 ? (
-                  <p className="task-column-empty">Nenhuma tarefa aqui.</p>
-                ) : (
-                  columnTasks.map((task) => {
-                    const assignee = memberName(task.assigneeUserId);
-                    const dueDate = task.dueAt ? new Date(task.dueAt) : null;
-                    const overdue =
-                      (task.status === "open" ||
-                        task.status === "in_progress") &&
-                      dueDate !== null &&
-                      dueDate.getTime() < Date.now();
-                    return (
-                      <article className="task-card" key={task.id}>
-                        <div className="task-card-heading">
-                          <strong>{task.title}</strong>
-                          <span
-                            className={`visibility-chip ${task.visibility}`}
-                          >
-                            {task.visibility === "private"
-                              ? "Somente eu"
-                              : "Da casa"}
-                          </span>
-                        </div>
-                        <div className="task-card-meta">
-                          {assignee && <span>{assignee}</span>}
-                          {dueDate && (
-                            <time
-                              className={overdue ? "overdue" : undefined}
-                              dateTime={task.dueAt ?? undefined}
-                            >
-                              {overdue ? "Atrasada · " : ""}
-                              {new Intl.DateTimeFormat("pt-BR", {
-                                timeZone: "America/Bahia",
-                                day: "2-digit",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }).format(dueDate)}
-                            </time>
-                          )}
-                          {task.recurrence !== "none" && (
-                            <span>
-                              {taskRecurrenceLabel(
-                                task.recurrence,
-                                task.recurrenceRule,
-                              )}
-                            </span>
-                          )}
-                        </div>
-                        {pendingIds.has(task.id) && (
-                          <p role="status">Aguardando sincronização</p>
-                        )}
-                        <fieldset
-                          className="task-actions"
-                          disabled={sendingTask || pendingIds.has(task.id)}
-                        >
-                          {(task.status === "open" ||
-                            task.status === "in_progress") && (
-                            <button
-                              type="button"
-                              onClick={() => setEditingTask(task)}
-                            >
-                              Editar
-                            </button>
-                          )}
-                          {task.status === "open" ? (
-                            <>
-                              <button
-                                className="start-task"
-                                type="button"
-                                onClick={() =>
-                                  void run({
-                                    commandId: crypto.randomUUID(),
-                                    type: "set_status",
-                                    payload: {
-                                      taskId: task.id,
-                                      expectedVersion: task.version,
-                                      status: "in_progress",
-                                    },
-                                  })
-                                }
-                              >
-                                Iniciar
-                              </button>
-                              <button
-                                type="button"
-                                className="complete-task"
-                                onClick={() =>
-                                  void run({
-                                    commandId: crypto.randomUUID(),
-                                    type: "set_status",
-                                    payload: {
-                                      taskId: task.id,
-                                      expectedVersion: task.version,
-                                      status: "completed",
-                                    },
-                                  })
-                                }
-                              >
-                                Concluir
-                              </button>
-                            </>
-                          ) : task.status === "in_progress" ? (
-                            <>
-                              <button
-                                className="complete-task"
-                                type="button"
-                                onClick={() =>
-                                  void run({
-                                    commandId: crypto.randomUUID(),
-                                    type: "set_status",
-                                    payload: {
-                                      taskId: task.id,
-                                      expectedVersion: task.version,
-                                      status: "completed",
-                                    },
-                                  })
-                                }
-                              >
-                                Concluir
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  void run({
-                                    commandId: crypto.randomUUID(),
-                                    type: "set_status",
-                                    payload: {
-                                      taskId: task.id,
-                                      expectedVersion: task.version,
-                                      status: "open",
-                                    },
-                                  })
-                                }
-                              >
-                                Voltar
-                              </button>
-                            </>
-                          ) : task.recurrence === "none" ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void run({
-                                  commandId: crypto.randomUUID(),
-                                  type: "set_status",
-                                  payload: {
-                                    taskId: task.id,
-                                    expectedVersion: task.version,
-                                    status: "open",
-                                  },
-                                })
-                              }
-                            >
-                              Reabrir
-                            </button>
-                          ) : (
-                            <span className="task-card-note">
-                              Tarefa recorrente concluída
-                            </span>
-                          )}
-                        </fieldset>
-                      </article>
-                    );
-                  })
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+      <TaskViews
+        tasks={displayedTasks}
+        renderTask={renderTaskCard}
+        gateway={gateway}
+        household={household}
+        userId={user.id}
+        catalog={catalog}
+        onTagsChanged={async () => {
+          await refresh();
+          await loadCatalog();
+        }}
+      />
     </section>
   );
 }
@@ -1391,7 +1401,9 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: task-modal-recurrence-2026.10.31.1</p>
+            <p className="muted">
+              Versão: task-views-tags-google-read-2026.11.02.1
+            </p>
           </section>
         </div>
       )}

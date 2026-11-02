@@ -19,11 +19,13 @@ export const googleCalendarConnectSchema = z
     exportPrivate: z.boolean(),
     reminderMinutes: z.number().int().min(0).max(10080).nullable(),
     importUpcoming: z.boolean(),
+    readSources: z.boolean().optional(),
   })
   .strict()
   .refine((value) => value.exportHousehold || value.exportPrivate);
 export type GoogleCalendarConnect = GoogleCalendarPreferences & {
   importUpcoming: boolean;
+  readSources?: boolean;
 };
 export const googleCalendarStatusSchema = z
   .object({
