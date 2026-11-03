@@ -37,6 +37,82 @@ const tasks = ["Limpar cozinha", "Comprar materiais"].map((title, i) =>
   }),
 );
 describe("TaskViews", () => {
+  it("orders by nearest deadline and shows filtered counts per task phase without a total", () => {
+    render(
+      <TaskViews
+        tasks={[
+          { ...tasks[0]!, dueAt: "2026-11-10T12:00:00Z" },
+          { ...tasks[1]!, dueAt: "2026-11-04T12:00:00Z" },
+          {
+            ...tasks[0]!,
+            id: "30000000-0000-4000-8000-000000000003",
+            status: "in_progress",
+            title: "Preparar materiais",
+          },
+          {
+            ...tasks[1]!,
+            id: "30000000-0000-4000-8000-000000000004",
+            status: "completed",
+            title: "Revisar materiais",
+            dueAt: "2026-11-01T12:00:00Z",
+            completedAt: "2026-11-02T12:00:00Z",
+            updatedAt: "2026-11-05T12:00:00Z",
+          },
+          {
+            ...tasks[0]!,
+            id: "30000000-0000-4000-8000-000000000005",
+            status: "completed",
+            title: "Organizar materiais",
+            dueAt: null,
+            completedAt: "2026-11-03T12:00:00Z",
+          },
+        ]}
+        renderTask={(t) => <article key={t.id}>{t.title}</article>}
+        gateway={{} as AppGateway}
+        household={house}
+        userId={userId}
+        catalog={[]}
+        onTagsChanged={async () => {}}
+      />,
+    );
+    expect(
+      within(screen.getByRole("region", { name: "A fazer" }))
+        .getAllByRole("article")
+        .map((item) => item.textContent),
+    ).toEqual(["Comprar materiais", "Limpar cozinha"]);
+    expect(screen.getByLabelText("2 tarefas em A fazer")).toHaveTextContent(
+      "2",
+    );
+    expect(screen.getByLabelText("1 tarefa em Em andamento")).toHaveTextContent(
+      "1",
+    );
+    expect(screen.getByLabelText("2 tarefas em Concluídas")).toHaveTextContent(
+      "2",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "Concluídas" }))
+        .getAllByRole("article")
+        .map((item) => item.textContent),
+    ).toEqual(["Organizar materiais", "Revisar materiais"]);
+    fireEvent.click(screen.getByRole("button", { name: "Ordenar tarefas" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Ordenar" }), {
+      target: { value: "updated_desc" },
+    });
+    expect(
+      within(screen.getByRole("region", { name: "Concluídas" }))
+        .getAllByRole("article")
+        .map((item) => item.textContent),
+    ).toEqual(["Revisar materiais", "Organizar materiais"]);
+    fireEvent.click(screen.getByRole("button", { name: "Concluído" }));
+    expect(screen.queryByText(/tarefa\(s\)/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Buscar tarefas e eventos" }),
+    );
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "materiais" },
+    });
+    expect(screen.getByLabelText("1 tarefa em A fazer")).toHaveTextContent("1");
+  });
   it("deduplicates StrictMode reads and closes old account editors after generation changes", async () => {
     const generationA = "50000000-0000-4000-8000-000000000001",
       generationB = "50000000-0000-4000-8000-000000000002";

@@ -203,7 +203,7 @@ export const initialTaskFilters: TaskFilters = {
   tagMode: "any",
   sources: ["gabio", "google_tasks", "google_calendar"],
   sourceIds: [],
-  sort: "created_desc",
+  sort: "due_asc",
 };
 export function selectViewItems(
   items: ViewItem[],

@@ -776,7 +776,9 @@ export function TaskViews({
             </label>
             <small>
               {view === "kanban"
-                ? "A ordem é aplicada dentro de cada coluna."
+                ? filters.sort === "due_asc"
+                  ? "A fazer e Em andamento seguem o prazo mais próximo. Concluídas mostra primeiro as finalizadas mais recentemente."
+                  : "A ordem é aplicada dentro de cada coluna."
                 : "A ordem é aplicada à lista do dia, sem mudar as datas da grade."}
             </small>
             <button type="button" onClick={() => setSortOpen(false)}>
@@ -789,16 +791,19 @@ export function TaskViews({
             {loading && (
               <span className="sr-only">Atualizando itens do Google. </span>
             )}
-            {visibleItems.filter((i) => i.status !== "event").length} tarefa(s)
-            {view === "calendar"
-              ? ` · ${visibleItems.filter((i) => i.status === "event").length} compromisso(s) na grade`
-              : ""}
-            {activeFilterCount ? " · Filtros ativos" : ""}
-            {reading &&
-            (reading.tasksState === "partial" ||
-              reading.calendarState === "partial")
-              ? " · Contagem parcial"
-              : ""}
+            {[
+              view === "calendar"
+                ? `${visibleItems.filter((i) => i.status === "event").length} compromisso(s) na grade`
+                : "",
+              activeFilterCount ? "Filtros ativos" : "",
+              reading &&
+              (reading.tasksState === "partial" ||
+                reading.calendarState === "partial")
+                ? "Contagem parcial"
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </span>
         </div>
       </div>
@@ -1031,6 +1036,17 @@ export function TaskViews({
             ["completed", "Concluídas"],
           ].map(([status, title]) => {
             const items = selected.filter((i) => i.status === status);
+            if (status === "completed" && filters.sort === "due_asc") {
+              const completionTime = (item: ViewItem) =>
+                item.task?.completedAt
+                  ? Date.parse(item.task.completedAt)
+                  : Number.NEGATIVE_INFINITY;
+              items.sort((a, b) => {
+                const aTime = completionTime(a);
+                const bTime = completionTime(b);
+                return aTime === bTime ? 0 : aTime > bTime ? -1 : 1;
+              });
+            }
             return (
               <section
                 className={`task-column ${status}`}
@@ -1039,7 +1055,11 @@ export function TaskViews({
               >
                 <header className="task-column-header">
                   <h3>{title}</h3>
-                  <span>{items.length}</span>
+                  <span
+                    aria-label={`${items.length} ${items.length === 1 ? "tarefa" : "tarefas"} em ${title}`}
+                  >
+                    {items.length}
+                  </span>
                 </header>
                 <div className="task-column-cards">
                   {items.length ? (
