@@ -79,7 +79,7 @@ describe("TaskViews", () => {
       readGoogleItems,
       saveExternalTaskTags,
     } as unknown as AppGateway;
-    render(
+    const { rerender } = render(
       <StrictMode>
         <TaskViews
           tasks={tasks}
@@ -99,7 +99,19 @@ describe("TaskViews", () => {
       screen.getByRole("dialog", { name: "Editar tags locais" }),
     ).toBeInTheDocument();
     expect(readGoogleItems).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Atualizar Google" }));
+    rerender(
+      <StrictMode>
+        <TaskViews
+          tasks={tasks}
+          renderTask={(t) => <article key={t.id}>{t.title}</article>}
+          gateway={{ ...gateway }}
+          household={house}
+          userId={userId}
+          catalog={[]}
+          onTagsChanged={async () => {}}
+        />
+      </StrictMode>,
+    );
     // The new generation removes the stale form before it can be submitted.
     await waitFor(() =>
       expect(
@@ -120,12 +132,20 @@ describe("TaskViews", () => {
         onTagsChanged={async () => {}}
       />,
     );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Buscar tarefas e eventos" }),
+    );
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "cozinha" },
     });
     expect(screen.queryByText("Comprar materiais")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar resultados" }));
     fireEvent.click(screen.getByRole("button", { name: "Calendário" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Buscar tarefas e eventos" }),
+    );
     expect(screen.getByRole("searchbox")).toHaveValue("cozinha");
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar resultados" }));
     const calendar = screen.getByRole("region", {
       name: "Calendário de tarefas",
     });
@@ -134,6 +154,7 @@ describe("TaskViews", () => {
     expect(within(calendar).getByText("Limpar cozinha")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
     expect(screen.queryByText("Comprar materiais")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
     expect(screen.getByText("Comprar materiais")).toBeInTheDocument();
   });
@@ -153,6 +174,7 @@ describe("TaskViews", () => {
         onTagsChanged={async () => {}}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Suas tarefas Gabio continuam disponíveis",
     );
@@ -170,9 +192,11 @@ describe("TaskViews", () => {
         onTagsChanged={async () => {}}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Ordenar tarefas" }));
     fireEvent.change(screen.getByRole("combobox", { name: "Ordenar" }), {
       target: { value: "title" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Concluído" }));
     fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
     const panel = within(
       screen.getByRole("dialog", { name: "Filtrar tarefas e eventos" }),
@@ -184,10 +208,15 @@ describe("TaskViews", () => {
     expect(panel.getByRole("checkbox", { name: "Casa" })).toBeChecked();
     fireEvent.click(panel.getByRole("button", { name: /Mostrar 1 resultado/ }));
     expect(screen.queryByText("Comprar materiais")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     fireEvent.click(
       screen.getByRole("button", { name: "Remover filtro Tag: Casa" }),
     );
     expect(screen.getByText("Comprar materiais")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Mostrar .* resultado/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Ordenar tarefas" }));
     expect(screen.getByRole("combobox", { name: "Ordenar" })).toHaveValue(
       "title",
     );
@@ -234,6 +263,7 @@ describe("TaskViews", () => {
         onTagsChanged={async () => {}}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
     fireEvent.click(screen.getByRole("button", { name: "Gerenciar tags" }));
     const manager = within(
       screen.getByRole("dialog", { name: "Gerenciar tags" }),
@@ -254,5 +284,29 @@ describe("TaskViews", () => {
         expect.objectContaining({ type: "delete", expectedVersion: 3 }),
       ),
     );
+  });
+  it("keeps tools compact until their modal is requested", () => {
+    render(
+      <TaskViews
+        tasks={tasks}
+        renderTask={(t) => <article key={t.id}>{t.title}</article>}
+        gateway={{} as AppGateway}
+        household={house}
+        userId={userId}
+        catalog={[]}
+        onTagsChanged={async () => {}}
+      />,
+    );
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Hoje" })).toBeNull();
+    expect(screen.getByText("Limpar cozinha")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Buscar tarefas e eventos" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Buscar tarefas e eventos" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveFocus();
   });
 });

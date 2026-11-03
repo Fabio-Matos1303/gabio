@@ -1,3 +1,4 @@
+import { TaskIcon } from "./TaskIcon.js";
 import { TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskTagFields } from "./TaskTagFields.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -44,6 +45,9 @@ export function TaskViews({
   const [view, setView] = useState<"kanban" | "calendar">("kanban");
   const [filters, setFilters] = useState<TaskFilters>(initialTaskFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
   const [sourceSearch, setSourceSearch] = useState("");
@@ -359,72 +363,111 @@ export function TaskViews({
         >
           <button
             type="button"
+            aria-label="Kanban"
+            title="Kanban"
             aria-pressed={view === "kanban"}
             onClick={() => setView("kanban")}
           >
-            Kanban
+            <TaskIcon name="board" />
+            <span className="task-view-name">Kanban</span>
           </button>
           <button
             type="button"
+            aria-label="Calendário"
+            title="Calendário"
             aria-pressed={view === "calendar"}
             onClick={() => setView("calendar")}
           >
-            Calendário
+            <TaskIcon name="calendar" />
+            <span className="task-view-name">Calendário</span>
           </button>
         </div>
-        <label>
-          Buscar tarefas e eventos
-          <input
-            type="search"
-            value={filters.search}
-            onChange={(e) => patch({ search: e.target.value })}
-            placeholder="Buscar por título"
-          />
-        </label>
-        <div className="task-presets" role="group" aria-label="Filtros rápidos">
-          {[
-            ["today", "Hoje"],
-            ["overdue", "Atrasadas (Gabio)"],
-          ].map(([value, label]) => (
-            <button
-              type="button"
-              key={value}
-              aria-pressed={filters.due === value}
-              onClick={() =>
-                patch({ due: filters.due === value ? "all" : value! })
-              }
-            >
-              {label}
-            </button>
-          ))}
+        <div
+          className="task-toolbar-actions"
+          role="group"
+          aria-label="Ferramentas de tarefas"
+        >
           <button
             type="button"
-            aria-pressed={filters.assignee === userId}
-            onClick={() =>
-              patch({ assignee: filters.assignee === userId ? "all" : userId })
-            }
+            className="task-icon-button"
+            aria-label="Buscar tarefas e eventos"
+            title="Buscar tarefas e eventos"
+            aria-haspopup="dialog"
+            onClick={() => setSearchOpen(true)}
           >
-            Minhas (Gabio)
+            <TaskIcon name="search" />
+            {filters.search && (
+              <span className="task-tool-dot" aria-hidden="true" />
+            )}
           </button>
-        </div>
-        <div className="task-toolbar-actions">
           <button
             type="button"
+            className="task-icon-button"
+            aria-label={`Filtros${activeFilterCount ? ` (${activeFilterCount})` : ""}`}
+            title="Filtros"
             aria-haspopup="dialog"
             onClick={() => setFiltersOpen(true)}
           >
-            Filtros{activeFilterCount ? ` (${activeFilterCount})` : ""}
+            <TaskIcon name="filter" />
+            {activeFilterCount > 0 && (
+              <span className="task-tool-badge" aria-hidden="true">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
-          {gateway.executeTagCommand && (
-            <button
-              type="button"
-              aria-haspopup="dialog"
-              onClick={() => setTagsOpen(true)}
-            >
-              Gerenciar tags
-            </button>
-          )}
+          <button
+            type="button"
+            className="task-icon-button"
+            aria-label="Ordenar tarefas"
+            title="Ordenar tarefas"
+            aria-haspopup="dialog"
+            onClick={() => setSortOpen(true)}
+          >
+            <TaskIcon name="sort" />
+          </button>
+          <button
+            type="button"
+            className="task-icon-button"
+            aria-label="Mais ações"
+            title="Mais ações"
+            aria-haspopup="dialog"
+            onClick={() => setMoreOpen(true)}
+          >
+            <TaskIcon name="more" />
+          </button>
         </div>
+        <TaskCardDialog
+          open={searchOpen}
+          title="Buscar tarefas e eventos"
+          onClose={() => setSearchOpen(false)}
+        >
+          <form
+            className="task-dialog-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSearchOpen(false);
+            }}
+          >
+            <div className="task-dialog-fields">
+              <label>
+                Buscar por título
+                <input
+                  type="search"
+                  name="search"
+                  value={filters.search}
+                  onChange={(e) => patch({ search: e.target.value })}
+                  placeholder="Digite um título"
+                />
+              </label>
+            </div>
+            <footer className="task-dialog-actions">
+              <button type="button" onClick={() => patch({ search: "" })}>
+                Limpar busca
+              </button>
+              <button className="primary-button">Mostrar resultados</button>
+            </footer>
+          </form>
+        </TaskCardDialog>
         <TaskCardDialog
           open={filtersOpen}
           title="Filtrar tarefas e eventos"
@@ -432,6 +475,64 @@ export function TaskViews({
           className="task-filter-dialog"
         >
           <div className="task-dialog-fields task-filter-grid">
+            {chips.length > 0 && (
+              <div className="task-active-filters" aria-label="Filtros ativos">
+                {chips.map((c) => (
+                  <button
+                    type="button"
+                    key={c.key}
+                    aria-label={`Remover filtro ${c.label}`}
+                    onClick={c.clear}
+                  >
+                    {c.label}
+                    <span aria-hidden="true"> ×</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {filters.tags.length > 1 && (
+              <small>
+                Tags:{" "}
+                {filters.tagMode === "all"
+                  ? "todas as selecionadas"
+                  : "qualquer uma das selecionadas"}
+                .
+              </small>
+            )}
+
+            <div
+              className="task-presets"
+              role="group"
+              aria-label="Filtros rápidos"
+            >
+              {[
+                ["today", "Hoje"],
+                ["overdue", "Atrasadas (Gabio)"],
+              ].map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={filters.due === value}
+                  onClick={() =>
+                    patch({ due: filters.due === value ? "all" : value! })
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                aria-pressed={filters.assignee === userId}
+                onClick={() =>
+                  patch({
+                    assignee: filters.assignee === userId ? "all" : userId,
+                  })
+                }
+              >
+                Minhas (Gabio)
+              </button>
+            </div>
+
             <fieldset>
               <legend>Status</legend>
               {[
@@ -647,27 +748,47 @@ export function TaskViews({
             </button>
           </footer>
         </TaskCardDialog>
-        <label className="task-sort">
-          Ordenar
-          <select
-            value={filters.sort}
-            onChange={(e) => patch({ sort: e.target.value })}
-          >
-            {[
-              ["created_desc", "Criação mais recente"],
-              ["due_asc", "Prazo mais próximo"],
-              ["due_desc", "Prazo mais distante"],
-              ["updated_desc", "Atualização mais recente"],
-              ["title", "Título A–Z"],
-            ].map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </label>
+        <TaskCardDialog
+          open={sortOpen}
+          title="Ordenar tarefas"
+          onClose={() => setSortOpen(false)}
+        >
+          <div className="task-dialog-fields">
+            {" "}
+            <label className="task-sort">
+              Ordenar
+              <select
+                value={filters.sort}
+                onChange={(e) => patch({ sort: e.target.value })}
+              >
+                {[
+                  ["created_desc", "Criação mais recente"],
+                  ["due_asc", "Prazo mais próximo"],
+                  ["due_desc", "Prazo mais distante"],
+                  ["updated_desc", "Atualização mais recente"],
+                  ["title", "Título A–Z"],
+                ].map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <small>
+              {view === "kanban"
+                ? "A ordem é aplicada dentro de cada coluna."
+                : "A ordem é aplicada à lista do dia, sem mudar as datas da grade."}
+            </small>
+            <button type="button" onClick={() => setSortOpen(false)}>
+              Concluído
+            </button>
+          </div>
+        </TaskCardDialog>
         <div className="task-results">
           <span role="status">
+            {loading && (
+              <span className="sr-only">Atualizando itens do Google. </span>
+            )}
             {visibleItems.filter((i) => i.status !== "event").length} tarefa(s)
             {view === "calendar"
               ? ` · ${visibleItems.filter((i) => i.status === "event").length} compromisso(s) na grade`
@@ -679,53 +800,7 @@ export function TaskViews({
               ? " · Contagem parcial"
               : ""}
           </span>
-          {activeFilterCount > 0 && (
-            <button
-              type="button"
-              onClick={() =>
-                setFilters({ ...initialTaskFilters, sort: filters.sort })
-              }
-            >
-              Limpar filtros
-            </button>
-          )}
         </div>
-        {chips.length > 0 && (
-          <div className="task-active-filters" aria-label="Filtros ativos">
-            {chips.map((c) => (
-              <button
-                type="button"
-                key={c.key}
-                aria-label={`Remover filtro ${c.label}`}
-                onClick={c.clear}
-              >
-                {c.label}
-                <span aria-hidden="true"> ×</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {filters.tags.length > 1 && (
-          <small>
-            Tags:{" "}
-            {filters.tagMode === "all"
-              ? "todas as selecionadas"
-              : "qualquer uma das selecionadas"}
-            .
-          </small>
-        )}
-        {view === "kanban" && (
-          <small>
-            Ordenação aplicada dentro de cada coluna. Compromissos do Google
-            Agenda aparecem no calendário.
-          </small>
-        )}
-        {view === "calendar" && (
-          <small>
-            Ordenação aplicada à lista do dia. Sem data: {noDate.length}{" "}
-            tarefa(s).
-          </small>
-        )}
       </div>
       {externalCard && (
         <TaskCardDialog
@@ -741,71 +816,114 @@ export function TaskViews({
           </div>
         </TaskCardDialog>
       )}
-      {gateway.readGoogleItems && (
-        <section className="task-google-state" aria-label="Leitura do Google">
-          {loading && <p role="status">Atualizando itens do Google…</p>}
-          {readError ? (
-            <p role="alert">
-              Não foi possível consultar o Google. Suas tarefas Gabio continuam
-              disponíveis.
-            </p>
-          ) : (
-            reading && (
-              <>
-                <p>
-                  {reading.state === "disabled"
-                    ? "Leitura do Google em preparação."
-                    : reading.state === "consent_required"
-                      ? "Autorize a leitura de Google Tasks e Agenda em Ajustes."
-                      : reading.state === "reconnect"
-                        ? "Reconecte sua conta Google em Ajustes."
-                        : reading.state === "rate_limited"
-                          ? "Aguarde um minuto antes de atualizar o Google. Os itens exibidos são da última consulta e podem não cobrir o mês selecionado."
-                          : `Google consultado às ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", timeStyle: "short" }).format(new Date(reading.checkedAt))}.`}
-                </p>
-                {reading.tasksState !== "ok" && (
-                  <p role="status">
-                    Google Tasks:{" "}
-                    {reading.tasksState === "partial"
-                      ? "resultados parciais."
-                      : "consulta indisponível."}
-                  </p>
-                )}
-                {reading.calendarState !== "ok" && (
-                  <p role="status">
-                    Google Agenda:{" "}
-                    {reading.calendarState === "partial"
-                      ? "resultados parciais; limite de leitura atingido."
-                      : "consulta indisponível."}
-                  </p>
-                )}
-                {loading && (
-                  <p>Aguarde a atualização para conferir os resultados.</p>
-                )}
-              </>
-            )
-          )}
-          {reading?.continuation && (
+      {gateway.readGoogleItems &&
+        (readError ||
+          (reading &&
+            reading.state !== "disabled" &&
+            (reading.state !== "connected" ||
+              reading.tasksState !== "ok" ||
+              reading.calendarState !== "ok"))) && (
+          <div role="status">
             <button
               type="button"
-              disabled={loading}
+              className="task-sync-notice"
+              onClick={() => setMoreOpen(true)}
+            >
+              <TaskIcon name="warning" />
+              {reading?.state === "consent_required"
+                ? "Autorizar leitura Google"
+                : "Google precisa de atenção"}
+              <span className="sr-only">. Abrir detalhes da leitura</span>
+            </button>
+          </div>
+        )}
+      <TaskCardDialog
+        open={moreOpen}
+        title="Mais ações"
+        onClose={() => setMoreOpen(false)}
+      >
+        <div className="task-dialog-fields task-more-actions">
+          {gateway.executeTagCommand && (
+            <button
+              type="button"
               onClick={() => {
-                readCursor.current = reading.continuation ?? undefined;
-                setReadSequence((n) => n + 1);
+                setMoreOpen(false);
+                setTagsOpen(true);
               }}
             >
-              Carregar mais itens Google
+              Gerenciar tags
             </button>
           )}
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => setReadSequence((n) => n + 1)}
-          >
-            Atualizar Google
-          </button>
-        </section>
-      )}
+          {gateway.readGoogleItems && (
+            <section
+              className="task-google-state"
+              aria-label="Leitura do Google"
+            >
+              {loading && <p role="status">Atualizando itens do Google…</p>}
+              {readError ? (
+                <p role="alert">
+                  Não foi possível consultar o Google. Suas tarefas Gabio
+                  continuam disponíveis.
+                </p>
+              ) : (
+                reading && (
+                  <>
+                    <p>
+                      {reading.state === "disabled"
+                        ? "Leitura do Google em preparação."
+                        : reading.state === "consent_required"
+                          ? "Autorize a leitura de Google Tasks e Agenda em Ajustes."
+                          : reading.state === "reconnect"
+                            ? "Reconecte sua conta Google em Ajustes."
+                            : reading.state === "rate_limited"
+                              ? "Aguarde um minuto antes de atualizar o Google. Os itens exibidos são da última consulta e podem não cobrir o mês selecionado."
+                              : `Google consultado às ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", timeStyle: "short" }).format(new Date(reading.checkedAt))}.`}
+                    </p>
+                    {reading.tasksState !== "ok" && (
+                      <p role="status">
+                        Google Tasks:{" "}
+                        {reading.tasksState === "partial"
+                          ? "resultados parciais."
+                          : "consulta indisponível."}
+                      </p>
+                    )}
+                    {reading.calendarState !== "ok" && (
+                      <p role="status">
+                        Google Agenda:{" "}
+                        {reading.calendarState === "partial"
+                          ? "resultados parciais; limite de leitura atingido."
+                          : "consulta indisponível."}
+                      </p>
+                    )}
+                    {loading && (
+                      <p>Aguarde a atualização para conferir os resultados.</p>
+                    )}
+                  </>
+                )
+              )}
+              {reading?.continuation && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    readCursor.current = reading.continuation ?? undefined;
+                    setReadSequence((n) => n + 1);
+                  }}
+                >
+                  Carregar mais itens Google
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => setReadSequence((n) => n + 1)}
+              >
+                Atualizar Google
+              </button>
+            </section>
+          )}
+        </div>
+      </TaskCardDialog>
       {externalEditor && (
         <TaskCardDialog
           open

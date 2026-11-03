@@ -132,6 +132,13 @@ function gatewayWith(
   };
 }
 
+async function openTaskDraft() {
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Adicionar tarefa" }),
+  );
+  return screen.getByLabelText("Título");
+}
+
 describe("App", () => {
   it("rejects inconsistent edited recurrence before enqueuing a command", async () => {
     window.history.replaceState({}, "", "/#tarefas");
@@ -159,11 +166,10 @@ describe("App", () => {
     window.history.replaceState({}, "", "/#tarefas");
     const gateway = gatewayWith();
     render(<App gateway={gateway} />);
-    const quick = await screen.findByLabelText("Título da tarefa");
+    const quick = await openTaskDraft();
     expect(screen.queryByText(/Capture rapidamente/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Última consulta/)).not.toBeInTheDocument();
     fireEvent.change(quick, { target: { value: "Rotina sintética" } });
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
     expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog", { name: "Nova tarefa" });
     const form = within(dialog);
@@ -197,7 +203,7 @@ describe("App", () => {
       ),
     );
     await waitFor(() => expect(dialog).not.toHaveAttribute("open"));
-    expect(quick).toHaveValue("");
+    expect(screen.getByLabelText("Título")).toHaveValue("");
   });
   it("preserves the task draft while the same session is revalidated on focus", async () => {
     let authListener: ((state: AuthState) => void) | undefined;
@@ -208,7 +214,7 @@ describe("App", () => {
     });
     window.history.replaceState({}, "", "/#tarefas");
     render(<App gateway={gateway} />);
-    const title = await screen.findByLabelText("Título da tarefa");
+    const title = await openTaskDraft();
     fireEvent.change(title, { target: { value: "Rascunho sintético" } });
     const revalidation = deferred<HouseholdContext | null>();
     vi.mocked(gateway.loadHousehold).mockReturnValueOnce(revalidation.promise);
@@ -217,7 +223,7 @@ describe("App", () => {
     expect(title).toBeVisible();
     expect(screen.queryByText("Carregando sua casa…")).not.toBeInTheDocument();
     await act(async () => revalidation.resolve(household));
-    expect(screen.getByLabelText("Título da tarefa")).toBe(title);
+    expect(screen.getByLabelText("Título")).toBe(title);
     expect(title).toHaveValue("Rascunho sintético");
     expect(gateway.loadHousehold).toHaveBeenCalledTimes(2);
   });
@@ -226,15 +232,19 @@ describe("App", () => {
     window.history.replaceState({}, "", "/#tarefas");
     const gateway = gatewayWith();
     render(<App gateway={gateway} />);
-    const title = await screen.findByLabelText("Título da tarefa");
+    const title = await openTaskDraft();
     await waitFor(() => expect(gateway.listTasks).toHaveBeenCalledTimes(1));
     fireEvent.change(title, { target: { value: "Rascunho de navegação" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     fireEvent.click(screen.getByRole("link", { name: "Ajustes" }));
-    await waitFor(() => expect(title).not.toBeVisible());
+    await screen.findByLabelText("Nome de exibição");
+    expect(title).not.toBeVisible();
     fireEvent.click(screen.getByRole("link", { name: "Tarefas" }));
-    await waitFor(() => expect(title).toBeVisible());
-    expect(screen.getByLabelText("Título da tarefa")).toBe(title);
-    expect(title).toHaveValue("Rascunho de navegação");
+    await openTaskDraft();
+    await waitFor(() => expect(screen.getByLabelText("Título")).toBeVisible());
+    expect(screen.getByLabelText("Título")).toHaveValue(
+      "Rascunho de navegação",
+    );
     expect(gateway.listTasks).toHaveBeenCalledTimes(1);
   });
 
@@ -247,13 +257,13 @@ describe("App", () => {
     });
     window.history.replaceState({}, "", "/#tarefas");
     render(<App gateway={gateway} />);
-    await screen.findByLabelText("Título da tarefa");
+    await openTaskDraft();
     const revalidation = deferred<HouseholdContext | null>();
     vi.mocked(gateway.loadHousehold).mockReturnValueOnce(revalidation.promise);
     act(() => authListener?.({ event: "SIGNED_IN", user }));
     act(() => authListener?.({ event: "SIGNED_OUT", user: null }));
     await act(async () => revalidation.resolve(household));
-    expect(screen.queryByLabelText("Título da tarefa")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Título")).not.toBeInTheDocument();
     expect(screen.queryByText(household.name)).not.toBeInTheDocument();
   });
 
@@ -268,7 +278,7 @@ describe("App", () => {
       });
       window.history.replaceState({}, "", "/#tarefas");
       render(<App gateway={gateway} />);
-      await screen.findByLabelText("Título da tarefa");
+      await openTaskDraft();
       if (result === "failed") {
         vi.mocked(gateway.loadHousehold).mockRejectedValueOnce(
           new Error("Synthetic failure"),
@@ -277,9 +287,7 @@ describe("App", () => {
         vi.mocked(gateway.loadHousehold).mockResolvedValueOnce(null);
       }
       await act(async () => authListener?.({ event: "SIGNED_IN", user }));
-      expect(
-        screen.queryByLabelText("Título da tarefa"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Título")).not.toBeInTheDocument();
       expect(
         await screen.findByRole("heading", { name: "Crie sua residência" }),
       ).toBeInTheDocument();
@@ -295,7 +303,7 @@ describe("App", () => {
     });
     window.history.replaceState({}, "", "/#tarefas");
     render(<App gateway={gateway} />);
-    const title = await screen.findByLabelText("Título da tarefa");
+    const title = await openTaskDraft();
     fireEvent.change(title, { target: { value: "Rascunho da casa anterior" } });
     vi.mocked(gateway.loadHousehold).mockResolvedValueOnce({
       ...household,
@@ -303,8 +311,8 @@ describe("App", () => {
       name: "Casa sintética B",
     });
     await act(async () => authListener?.({ event: "SIGNED_IN", user }));
-    expect(screen.getByLabelText("Título da tarefa")).not.toBe(title);
-    expect(screen.getByLabelText("Título da tarefa")).toHaveValue("");
+    expect(screen.getByLabelText("Título")).not.toBe(title);
+    expect(screen.getByLabelText("Título")).toHaveValue("");
     expect(screen.getByText("Casa sintética B")).toBeInTheDocument();
   });
 
@@ -428,8 +436,9 @@ describe("App", () => {
       name: "Atualizar tarefas",
     });
     await waitFor(() => expect(update).toBeEnabled());
-    const title = screen.getByLabelText("Título da tarefa");
+    const title = await openTaskDraft();
     fireEvent.change(title, { target: { value: "Rascunho não enviado" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
     fireEvent.click(update);
     expect(
       await screen.findByText("Atualizada por outro membro"),
@@ -448,10 +457,9 @@ describe("App", () => {
         screen.getByRole("button", { name: "Atualizar tarefas" }),
       ).toBeEnabled(),
     );
-    fireEvent.change(screen.getByLabelText("Título da tarefa"), {
+    fireEvent.change(await openTaskDraft(), {
       target: { value: "Envio único" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
     const button = screen.getByRole("button", { name: "Criar tarefa" });
     const form = button.closest("form")!;
     fireEvent.submit(form);
@@ -481,10 +489,9 @@ describe("App", () => {
         screen.getByRole("button", { name: "Atualizar tarefas" }),
       ).toBeEnabled(),
     );
-    fireEvent.change(screen.getByLabelText("Título da tarefa"), {
+    fireEvent.change(await openTaskDraft(), {
       target: { value: "Confirmada no servidor" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
     fireEvent.click(screen.getByRole("button", { name: "Criar tarefa" }));
     expect(
       await screen.findByText(
@@ -501,11 +508,12 @@ describe("App", () => {
       .fn()
       .mockRejectedValue(new Error("network"));
     render(<App gateway={gateway} />);
-    const title = await screen.findByLabelText("Título da tarefa");
+    const title = await openTaskDraft();
     fireEvent.change(title, { target: { value: "Tarefa pendente sintética" } });
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
     fireEvent.click(screen.getByRole("button", { name: "Criar tarefa" }));
-    await waitFor(() => expect(title).toHaveValue(""));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Título")).toHaveValue(""),
+    );
     expect(
       await screen.findByText("Tarefa pendente sintética"),
     ).toBeInTheDocument();
@@ -983,14 +991,13 @@ describe("App", () => {
     );
   });
 
-  it("creates a task from the single quick-entry form", async () => {
+  it("creates a task directly from the header card action", async () => {
     const gateway = gatewayWith();
     render(<App gateway={gateway} />);
     fireEvent.click(await screen.findByRole("link", { name: "Tarefas" }));
-    fireEvent.change(await screen.findByLabelText("Título da tarefa"), {
+    fireEvent.change(await openTaskDraft(), {
       target: { value: "Lavar roupa" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Adicionar tarefa" }));
     fireEvent.click(screen.getByRole("button", { name: "Criar tarefa" }));
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(

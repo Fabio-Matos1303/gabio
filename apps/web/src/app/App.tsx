@@ -1,3 +1,4 @@
+import { TaskIcon } from "./TaskIcon.js";
 import { TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskViews } from "./TaskViews.js";
 import { TaskTagFields, parseTagInput } from "./TaskTagFields.js";
@@ -1024,11 +1025,27 @@ function TaskPanel({
         </div>
         <button
           type="button"
-          className="secondary-button"
+          className="task-icon-button"
+          aria-label="Atualizar tarefas"
+          title="Atualizar tarefas"
           disabled={loadingTasks || sendingTask}
           onClick={() => void updateTasks()}
         >
-          Atualizar tarefas
+          <TaskIcon name="refresh" />
+        </button>
+        <button
+          type="button"
+          className="primary-button task-new-button"
+          aria-label="Adicionar tarefa"
+          aria-haspopup="dialog"
+          disabled={sendingTask}
+          onClick={() => {
+            setNotice(null);
+            setCreationOpen(true);
+          }}
+        >
+          <TaskIcon name="plus" />
+          Nova
         </button>
       </div>
       {loadingTasks && <p role="status">Atualizando tarefas…</p>}
@@ -1203,34 +1220,6 @@ function TaskPanel({
             </button>
           </article>
         ))}
-      <form
-        className="task-quick-create glass-surface"
-        onSubmit={(event) => {
-          event.preventDefault();
-          setNotice(null);
-          setCreationOpen(true);
-        }}
-      >
-        <label>
-          <span className="sr-only">Título da tarefa</span>
-          <input
-            name="quickTitle"
-            value={creationTitle}
-            onChange={(event) => setCreationTitle(event.target.value)}
-            placeholder="O que precisa ser feito?"
-            maxLength={240}
-            disabled={sendingTask}
-          />
-        </label>
-        <button
-          className="primary-button"
-          disabled={sendingTask}
-          type="submit"
-          aria-haspopup="dialog"
-        >
-          Adicionar tarefa
-        </button>
-      </form>
       <TaskCreationDialog
         open={creationOpen}
         busy={sendingTask}
@@ -1353,7 +1342,7 @@ function Dashboard({
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${page === "tasks" ? " task-page" : ""}`}>
       <header className="topbar">
         <a
           className="brand"
@@ -1466,9 +1455,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">
-              Versão: task-ui-cards-filters-calendar-2026.11.02.1
-            </p>
+            <p className="muted">Versão: task-toolbar-compact-2026.11.02.1</p>
           </section>
         </div>
       )}

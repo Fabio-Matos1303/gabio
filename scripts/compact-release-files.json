@@ -1,0 +1,12 @@
+[
+  "apps/web/src/app/App.tsx",
+  "apps/web/src/app/App.test.tsx",
+  "apps/web/src/app/TaskViews.tsx",
+  "apps/web/src/app/TaskViews.test.tsx",
+  "apps/web/src/app/TaskCardDialog.tsx",
+  "apps/web/src/app/TaskIcon.tsx",
+  "apps/web/src/task-views.css",
+  "apps/web/public/version.json",
+  "docs/operations/compact-task-toolbar.md",
+  "scripts/compact-release-files.json"
+]

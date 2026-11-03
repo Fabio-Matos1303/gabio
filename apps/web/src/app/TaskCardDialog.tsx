@@ -23,7 +23,9 @@ export function TaskCardDialog({
     const trigger = document.activeElement as HTMLElement | null;
     if (!dialog.open) dialog.showModal();
     dialog
-      .querySelector<HTMLInputElement>('input[name="title"]:not(:disabled)')
+      .querySelector<HTMLInputElement>(
+        'input[name="title"]:not(:disabled), input[name="search"]:not(:disabled)',
+      )
       ?.focus();
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
