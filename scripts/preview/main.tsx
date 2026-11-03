@@ -81,7 +81,22 @@ const gateway: AppGateway = {
   acceptInvitation: unavailable,
   inviteMember: unavailable,
   updateProfile: async () => {},
-  getGoogleCalendarStatus: async () => ({ enabled: true, connection: null }),
+  getGoogleCalendarStatus: async () => ({
+    enabled: true,
+    connection:
+      new URLSearchParams(window.location.search).get("googlePreview") ===
+      "connected"
+        ? {
+            status: "connected",
+            exportHousehold: true,
+            exportPrivate: false,
+            reminderMinutes: null,
+            lastSyncedAt: "2026-11-03T12:00:00Z",
+            pendingCount: 2,
+            failedCount: 0,
+          }
+        : null,
+  }),
   connectGoogleCalendar: async () => {
     throw new Error("Integração indisponível");
   },

@@ -1455,7 +1455,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: task-toolbar-compact-2026.11.02.1</p>
+            <p className="muted">Versão: integrations-ui-2026.11.03.1</p>
           </section>
         </div>
       )}

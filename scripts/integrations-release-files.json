@@ -1,0 +1,12 @@
+[
+  "apps/web/src/app/GoogleCalendarSettings.tsx",
+  "apps/web/src/app/GoogleCalendarSettings.test.tsx",
+  "apps/web/src/app/HelpTooltip.tsx",
+  "apps/web/src/app/HelpTooltip.test.tsx",
+  "apps/web/src/integration-settings.css",
+  "apps/web/src/app/App.tsx",
+  "apps/web/public/version.json",
+  "scripts/preview/main.tsx",
+  "docs/operations/integrations-ui.md",
+  "scripts/integrations-release-files.json"
+]

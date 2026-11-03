@@ -1,3 +1,6 @@
+import { HelpTooltip } from "./HelpTooltip.js";
+import { TaskIcon } from "./TaskIcon.js";
+import "../integration-settings.css";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AppGateway } from "../lib/app-gateway.js";
 import {
@@ -134,6 +137,7 @@ export function GoogleCalendarSettings({
     lock.current = true;
     setBusy(true);
     setNotice(null);
+    setAuthorizationUrl(null);
     try {
       await action();
     } catch {
@@ -148,13 +152,26 @@ export function GoogleCalendarSettings({
     }
   }
   async function refresh() {
+    const preserveDraft = hasLocalEdits;
     const next = googleCalendarStatusSchema.parse(
       await gateway.getGoogleCalendarStatus(),
     );
-    if (live.current) setSnapshot(next);
+    if (live.current) {
+      setSnapshot(next);
+      if (!preserveDraft && next.connection) {
+        setHousehold(next.connection.exportHousehold);
+        setPrivateTasks(next.connection.exportPrivate);
+        setReminder(
+          next.connection.reminderMinutes === null
+            ? "none"
+            : String(next.connection.reminderMinutes),
+        );
+      }
+    }
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (active && !hasChanges) return;
     const parsed = googleCalendarPreferencesSchema.safeParse({
       exportHousehold: household,
       exportPrivate: privateTasks,
@@ -170,11 +187,20 @@ export function GoogleCalendarSettings({
     await run(async () => {
       if (snapshot?.connection?.status === "connected") {
         await gateway.saveGoogleCalendarPreferences(parsed.data);
-        if (live.current)
+        if (live.current) {
+          setSnapshot((current) =>
+            current?.connection
+              ? {
+                  ...current,
+                  connection: { ...current.connection, ...parsed.data },
+                }
+              : current,
+          );
           setNotice({
             kind: "success",
             text: "Preferências salvas. A sincronização será feita em segundo plano.",
           });
+        }
       } else {
         const result = googleAuthorizationSchema.parse(
           await gateway.connectGoogleCalendar({
@@ -194,272 +220,316 @@ export function GoogleCalendarSettings({
     loading ||
     !snapshot?.enabled ||
     connection?.status === "disconnecting";
+  const hasLocalEdits =
+    household !== (connection?.exportHousehold ?? true) ||
+    privateTasks !== (connection?.exportPrivate ?? false) ||
+    reminder !==
+      (connection?.reminderMinutes == null
+        ? "none"
+        : String(connection.reminderMinutes));
+  const hasChanges = active && hasLocalEdits;
+  const syncTitle =
+    !connection || connection.status === "disconnected"
+      ? "Conexão individual"
+      : connection.status === "reconnect"
+        ? "Reconecte sua conta"
+        : connection?.status === "disconnecting"
+          ? "Remoção em andamento"
+          : connection?.failedCount
+            ? "Precisa de atenção"
+            : connection?.pendingCount
+              ? "Sincronização pendente"
+              : connection?.lastSyncedAt
+                ? "Tudo em dia"
+                : "Pronta para sincronizar";
+  const syncDescription =
+    !connection || connection.status === "disconnected"
+      ? "Cada pessoa autoriza sua própria conta Google."
+      : connection.status === "reconnect"
+        ? "Autorize o Google novamente para retomar os envios."
+        : connection?.status === "disconnecting"
+          ? "A conexão será encerrada após a limpeza dos eventos."
+          : connection?.failedCount
+            ? "Algumas atualizações não foram enviadas. Você pode tentar novamente."
+            : connection?.pendingCount
+              ? "As alterações serão enviadas em segundo plano."
+              : connection?.lastSyncedAt
+                ? "Nenhuma atualização pendente nesta consulta."
+                : "O primeiro envio acontece quando houver tarefas com prazo.";
   return (
     <article
-      className="settings-card google-calendar-settings"
+      className="settings-card google-calendar-settings integration-settings"
       aria-labelledby="google-calendar-heading"
     >
-      <div className="settings-card-heading">
-        <div>
-          <p className="eyebrow">Integrações</p>
-          <h2 id="google-calendar-heading">Google Agenda</h2>
+      <header className="integration-heading">
+        <div className="integration-identity">
+          <span className="integration-brand-icon">
+            <TaskIcon name="calendar" />
+          </span>
+          <div>
+            <p className="integration-eyebrow">Integrações</p>
+            <h2 id="google-calendar-heading">Google Agenda e Tasks</h2>
+          </div>
         </div>
-        <span className={"connection-status " + (active ? "connected" : "")}>
-          {loading
-            ? "Consultando"
-            : snapshot === null
-              ? "Consulta indisponível"
-              : !snapshot.enabled
-                ? "Em preparação"
-                : connection
-                  ? labels[connection.status]
-                  : "Desconectado"}
-        </span>
-      </div>
-      <section className="google-reading-consent">
-        <h3>Ler Tasks e Agenda no Gabio</h3>
-        <p>
-          Consulte suas tarefas e eventos pessoais no calendário do Gabio. A
-          leitura não altera itens no Google. Reconectar remove as tags locais
-          de tarefas Google da conexão anterior.
-        </p>
-        <label className="calendar-checkbox">
-          <input
-            type="checkbox"
-            checked={readSources}
-            disabled={busy}
-            onChange={(e) => setReadSources(e.target.checked)}
-          />
-          Autorizar leitura de Google Tasks e dos eventos e listas de
-          calendários
-        </label>
-        <button
-          type="button"
-          disabled={disabled || !readSources}
-          onClick={() =>
-            void run(async () => {
-              const result = googleAuthorizationSchema.parse(
-                await gateway.connectGoogleCalendar({
-                  exportHousehold: household,
-                  exportPrivate: privateTasks,
-                  reminderMinutes:
-                    reminder === "none" ? null : Number(reminder),
-                  importUpcoming: false,
-                  readSources: true,
-                }),
-              );
-              if (live.current) setAuthorizationUrl(result.authorizationUrl);
-            })
-          }
-        >
-          Conectar leitura do Google
-        </button>
-      </section>
-      <p className="muted">
-        Veja os prazos das tarefas na sua conta Google. Cada pessoa conecta a
-        própria conta. A gestão das tarefas continua no Gabio.
-      </p>
+        <div className="integration-status-row">
+          <span className={"connection-status " + (active ? "connected" : "")}>
+            {loading
+              ? "Consultando"
+              : snapshot === null
+                ? "Consulta indisponível"
+                : !snapshot.enabled
+                  ? "Em preparação"
+                  : connection
+                    ? labels[connection.status]
+                    : "Desconectado"}
+          </span>
+          <button
+            type="button"
+            className="integration-icon-button"
+            aria-label="Atualizar estado da agenda"
+            title="Atualizar estado da agenda"
+            disabled={busy || loading}
+            onClick={() => void run(refresh)}
+          >
+            <TaskIcon name="refresh" />
+          </button>
+        </div>
+      </header>
       {notice && (
-        <p
-          className={"notice " + notice.kind}
+        <div
+          className={"notice integration-notice " + notice.kind}
           role={notice.kind === "error" ? "alert" : "status"}
         >
-          {notice.text}
-        </p>
+          <span>{notice.text}</span>
+          <button
+            type="button"
+            className="integration-icon-button"
+            aria-label="Fechar mensagem da agenda"
+            onClick={() => setNotice(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
       {snapshot && !snapshot.enabled && (
-        <p>
-          Integração em preparação. A conexão será liberada após a configuração
-          do Google.
-        </p>
+        <p className="integration-hint">Integração em preparação.</p>
       )}
       {snapshot?.enabled && (
         <>
-          <form
-            className="stack-form compact"
-            onSubmit={(event) => void submit(event)}
-          >
-            <fieldset disabled={disabled}>
-              <legend>Quais tarefas enviar para sua agenda?</legend>
-              <label className="calendar-checkbox">
+          <div className="integration-options">
+            <section
+              className="integration-section google-reading-consent"
+              aria-labelledby="google-reading-title"
+            >
+              <div className="integration-section-heading">
+                <h3 id="google-reading-title">Ver no Gabio</h3>
+                <HelpTooltip label="Sobre a leitura Google">
+                  Consulte suas tarefas do Google Tasks e eventos das suas
+                  agendas. A leitura é pessoal e não altera itens no Google.
+                  Cada pessoa autoriza sua própria conta. Marcar prepara uma
+                  nova autorização; desmarcar não revoga uma permissão já
+                  concedida.
+                </HelpTooltip>
+              </div>
+              <label className="integration-check">
                 <input
                   type="checkbox"
-                  checked={household}
-                  onChange={(event) => {
-                    setHousehold(event.target.checked);
+                  checked={readSources}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    setReadSources(e.target.checked);
                     setAuthorizationUrl(null);
                   }}
                 />
-                Tarefas compartilhadas da casa
+                Autorizar leitura de Tasks e Agenda
               </label>
-              <label className="calendar-checkbox">
-                <input
-                  type="checkbox"
-                  checked={privateTasks}
-                  onChange={(event) => {
-                    setPrivateTasks(event.target.checked);
-                    setAuthorizationUrl(null);
-                  }}
-                />
-                Minhas tarefas privadas
-              </label>
-              <label>
-                Lembrete de prazo
-                <select
-                  value={reminder}
-                  onChange={(event) => {
-                    setReminder(event.target.value);
-                    setAuthorizationUrl(null);
-                  }}
-                >
-                  <option value="none">Sem lembrete</option>
-                  <option value="0">No horário do prazo</option>
-                  <option value="15">15 minutos antes</option>
-                  <option value="60">1 hora antes</option>
-                  <option value="1440">1 dia antes</option>
-                  {!["none", "0", "15", "60", "1440"].includes(reminder) && (
-                    <option value={reminder}>{reminder} minutos antes</option>
-                  )}
-                </select>
-              </label>
-              {!active && (
-                <label className="calendar-checkbox">
+              {readSources &&
+                connection &&
+                connection.status !== "disconnected" && (
+                  <p className="integration-warning">
+                    Reconectar remove as tags locais dos itens Google da conexão
+                    anterior.
+                  </p>
+                )}
+              <button
+                type="button"
+                className="secondary-button integration-reading-button"
+                disabled={disabled || !readSources}
+                onClick={() =>
+                  void run(async () => {
+                    const result = googleAuthorizationSchema.parse(
+                      await gateway.connectGoogleCalendar({
+                        exportHousehold: household,
+                        exportPrivate: privateTasks,
+                        reminderMinutes:
+                          reminder === "none" ? null : Number(reminder),
+                        importUpcoming: false,
+                        readSources: true,
+                      }),
+                    );
+                    if (live.current)
+                      setAuthorizationUrl(result.authorizationUrl);
+                  })
+                }
+              >
+                Conectar leitura
+              </button>
+            </section>
+            <form
+              className="integration-section integration-export"
+              onSubmit={(event) => void submit(event)}
+              aria-labelledby="google-export-title"
+            >
+              <div className="integration-section-heading">
+                <h3 id="google-export-title">Enviar ao Google Agenda</h3>
+                <HelpTooltip label="Sobre o envio de tarefas">
+                  Tarefas com prazo são enviadas para calendários do Gabio na
+                  sua conta Google como lembretes de 15 minutos, sem reservar
+                  horário. Tarefas sem prazo não são enviadas. Alterações no
+                  Google não mudam tarefas no Gabio.
+                </HelpTooltip>
+              </div>
+              <fieldset disabled={disabled}>
+                <legend className="sr-only">
+                  Tarefas para enviar ao Google Agenda
+                </legend>
+                <label className="integration-check">
                   <input
                     type="checkbox"
-                    checked={importUpcoming}
-                    onChange={(event) => {
-                      setImportUpcoming(event.target.checked);
+                    checked={household}
+                    onChange={(e) => {
+                      setHousehold(e.target.checked);
                       setAuthorizationUrl(null);
                     }}
                   />
-                  Incluir tarefas abertas com prazo de hoje em diante
+                  Tarefas da casa
                 </label>
+                <label className="integration-check">
+                  <input
+                    type="checkbox"
+                    checked={privateTasks}
+                    onChange={(e) => {
+                      setPrivateTasks(e.target.checked);
+                      setAuthorizationUrl(null);
+                    }}
+                  />
+                  Minhas tarefas privadas
+                </label>
+                <div className="integration-field">
+                  <div className="integration-section-heading">
+                    <label htmlFor="google-reminder">Lembrete de prazo</label>
+                    <HelpTooltip label="Sobre os lembretes">
+                      Os avisos de prazo são enviados pelo Google Agenda,
+                      conforme as notificações habilitadas na sua conta.
+                    </HelpTooltip>
+                  </div>
+                  <select
+                    id="google-reminder"
+                    value={reminder}
+                    onChange={(e) => {
+                      setReminder(e.target.value);
+                      setAuthorizationUrl(null);
+                    }}
+                  >
+                    <option value="none">Sem lembrete</option>
+                    <option value="0">No horário do prazo</option>
+                    <option value="15">15 minutos antes</option>
+                    <option value="60">1 hora antes</option>
+                    <option value="1440">1 dia antes</option>
+                    {!["none", "0", "15", "60", "1440"].includes(reminder) && (
+                      <option value={reminder}>{reminder} minutos antes</option>
+                    )}
+                  </select>
+                </div>
+                {!active && (
+                  <div className="integration-existing">
+                    <label className="integration-check">
+                      <input
+                        type="checkbox"
+                        checked={importUpcoming}
+                        onChange={(e) => {
+                          setImportUpcoming(e.target.checked);
+                          setAuthorizationUrl(null);
+                        }}
+                      />
+                      Incluir pendências a partir de hoje
+                    </label>
+                    <HelpTooltip label="Sobre as tarefas existentes">
+                      Inclui as tarefas abertas que já têm prazo de hoje em
+                      diante. As alterações futuras seguem suas preferências de
+                      envio.
+                    </HelpTooltip>
+                  </div>
+                )}
+              </fieldset>
+              {privateTasks && (
+                <p className="integration-warning">
+                  Não compartilhe o calendário “Gabio - Privado” no Google: ele
+                  contém suas tarefas privadas.
+                </p>
               )}
-            </fieldset>
-            <p className="setup-note">
-              Os eventos são lembretes de prazo de 15 minutos e não reservam
-              horário. Tarefas sem prazo não são enviadas. Alterações no Google
-              não mudam tarefas no Gabio.
-            </p>
-            <p className="setup-note">
-              As tarefas privadas vão para um calendário separado na sua conta.
-              Compartilhá-lo manualmente no Google pode expor essas informações.
-            </p>
-            <button className="primary-button" disabled={disabled}>
-              {busy
-                ? "Aguarde…"
-                : active
-                  ? "Salvar preferências da agenda"
-                  : "Conectar Google Agenda"}
-            </button>
-          </form>
-          {authorizationUrl && (
-            <a
-              className="primary-button calendar-authorize"
-              href={authorizationUrl}
-              rel="noreferrer"
-            >
-              Continuar no Google
-            </a>
-          )}
-          {active && connection.failedCount > 0 && (
-            <details className="calendar-disconnect">
-              <summary>Recuperar criação de calendário</summary>
-              <p>
-                Use se a criação do calendário falhou. Uma tentativa anterior
-                pode ter criado um calendário vazio no Google, que você poderá
-                excluir manualmente.
-              </p>
-              <label className="calendar-checkbox">
-                <input
-                  type="checkbox"
-                  checked={confirmRepair}
-                  disabled={busy}
-                  onChange={(event) => setConfirmRepair(event.target.checked)}
-                />
-                Autorizo tentar criar novamente calendários que ficaram sem
-                confirmação
-              </label>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={busy || !confirmRepair}
-                onClick={() =>
-                  void run(async () => {
-                    await gateway.repairGoogleCalendar();
-                    if (live.current) {
-                      setConfirmRepair(false);
-                      setNotice({
-                        kind: "success",
-                        text: "Recuperação solicitada. Calendários já confirmados serão preservados.",
-                      });
-                    }
-                    await refresh();
-                  })
-                }
+              {connection?.status === "reconnect" && !readSources && (
+                <p className="integration-warning">
+                  Reconectar remove as tags locais dos itens Google da conexão
+                  anterior.
+                </p>
+              )}
+              <div className="integration-actions">
+                <button
+                  className="primary-button"
+                  disabled={disabled || (active && !hasChanges)}
+                >
+                  {busy
+                    ? "Aguarde…"
+                    : active
+                      ? "Salvar preferências"
+                      : connection?.status === "reconnect"
+                        ? "Reconectar agenda"
+                        : "Conectar agenda"}
+                </button>
+                {active && (
+                  <span className="integration-hint" role="status">
+                    {hasChanges ? "Alterações não salvas" : "Tudo salvo"}
+                  </span>
+                )}
+              </div>
+            </form>
+          </div>
+          {authorizationUrl && !busy && (
+            <div className="integration-authorization" role="status">
+              <a
+                className="primary-button"
+                href={authorizationUrl}
+                rel="noreferrer"
               >
-                Reparar calendários
-              </button>
-            </details>
-          )}
-          {connection?.status === "disconnecting" && (
-            <div className="calendar-disconnect">
-              <p>
-                Se a remoção não puder ser concluída, você pode interromper a
-                limpeza e revogar a conexão.
-              </p>
-              <label className="calendar-checkbox">
-                <input
-                  type="checkbox"
-                  checked={abandonCleanup}
-                  disabled={busy}
-                  onChange={(event) => setAbandonCleanup(event.target.checked)}
-                />
-                Entendo que eventos pendentes de remoção poderão permanecer no
-                Google
-              </label>
-              <button
-                type="button"
-                className="danger-button"
-                disabled={busy || !abandonCleanup}
-                onClick={() =>
-                  void run(async () => {
-                    await gateway.disconnectGoogleCalendar(false);
-                    if (live.current) {
-                      setNotice({
-                        kind: "success",
-                        text: "Limpeza interrompida. Revogação solicitada; os eventos restantes serão mantidos.",
-                      });
-                      setAbandonCleanup(false);
-                    }
-                    await refresh();
-                  })
-                }
-              >
-                Interromper limpeza e desconectar
-              </button>
+                Continuar no Google <span aria-hidden="true">↗</span>
+              </a>
             </div>
           )}
           {connection && connection.status !== "disconnected" && (
-            <>
-              <p aria-live="polite">
-                {connection.pendingCount} pendente(s) · {connection.failedCount}{" "}
-                falha(s)
-              </p>
-              <p className="muted">
-                Última sincronização:{" "}
-                {connection.lastSyncedAt
-                  ? new Intl.DateTimeFormat("pt-BR", {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                      timeZone: "America/Bahia",
-                    }).format(new Date(connection.lastSyncedAt))
-                  : "ainda não realizada"}
-              </p>
+            <section
+              className="integration-sync"
+              aria-label="Estado da sincronização"
+            >
+              <div className="integration-section-heading">
+                <h3>{syncTitle}</h3>
+                <HelpTooltip label="Sobre o estado da sincronização">
+                  {syncDescription}
+                </HelpTooltip>
+              </div>
+              <div className="integration-sync-summary" role="status">
+                <span>{connection.pendingCount} na fila</span>
+                <span>{connection.failedCount} falhas</span>
+                <span>
+                  {connection.lastSyncedAt
+                    ? `Último envio: ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Bahia" }).format(new Date(connection.lastSyncedAt))}`
+                    : "Sem envios ainda"}
+                </span>
+              </div>
               <button
                 type="button"
                 className="secondary-button"
-                disabled={busy || !active}
+                disabled={busy || !active || hasChanges}
                 onClick={() =>
                   void run(async () => {
                     await gateway.syncGoogleCalendar();
@@ -471,58 +541,145 @@ export function GoogleCalendarSettings({
                   })
                 }
               >
-                Sincronizar tarefas
+                <TaskIcon name="refresh" />
+                Sincronizar
               </button>
-              <details className="calendar-disconnect">
-                <summary>Desconectar minha conta</summary>
-                <label className="calendar-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={removeEvents}
-                    disabled={busy || connection.status === "disconnecting"}
-                    onChange={(event) => setRemoveEvents(event.target.checked)}
-                  />
-                  Remover os eventos do Gabio antes de desconectar
-                </label>
-                <p className="muted">
-                  Sem esta opção, os eventos já enviados ficam na sua agenda.
-                  Nenhuma tarefa é apagada do Gabio.
+              {hasChanges && (
+                <p className="integration-hint">
+                  Salve as preferências antes de sincronizar.
                 </p>
-                <button
-                  type="button"
-                  className="danger-button"
-                  disabled={busy || connection.status === "disconnecting"}
-                  onClick={() =>
-                    void run(async () => {
-                      await gateway.disconnectGoogleCalendar(removeEvents);
-                      if (live.current) {
-                        setAuthorizationUrl(null);
-                        setNotice({
-                          kind: "success",
-                          text: removeEvents
-                            ? "Remoção e desconexão solicitadas. Acompanhe o estado."
-                            : "Desconexão solicitada. Os eventos existentes serão mantidos.",
-                        });
-                      }
-                      await refresh();
-                    })
-                  }
-                >
-                  Confirmar desconexão
-                </button>
-              </details>
-            </>
+              )}
+            </section>
           )}
         </>
       )}
-      <button
-        type="button"
-        className="secondary-button"
-        disabled={busy || loading}
-        onClick={() => void run(refresh)}
-      >
-        Atualizar estado da agenda
-      </button>
+      {snapshot?.enabled &&
+        connection &&
+        connection.status !== "disconnected" && (
+          <details className="integration-manage">
+            <summary>Gerenciar conexão</summary>
+            <div className="integration-manage-content">
+              {active && connection.failedCount > 0 && (
+                <section>
+                  <h3>Recuperar calendário</h3>
+                  <p>
+                    Uma nova tentativa pode criar outro calendário. Calendários
+                    vazios anteriores poderão ser excluídos manualmente no
+                    Google.
+                  </p>
+                  <label className="integration-check">
+                    <input
+                      type="checkbox"
+                      checked={confirmRepair}
+                      disabled={busy}
+                      onChange={(e) => setConfirmRepair(e.target.checked)}
+                    />
+                    Autorizo tentar criar novamente calendários que ficaram sem
+                    confirmação
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busy || !confirmRepair}
+                    onClick={() =>
+                      void run(async () => {
+                        await gateway.repairGoogleCalendar();
+                        if (live.current) {
+                          setConfirmRepair(false);
+                          setNotice({
+                            kind: "success",
+                            text: "Recuperação solicitada. Calendários já confirmados serão preservados.",
+                          });
+                        }
+                        await refresh();
+                      })
+                    }
+                  >
+                    Reparar calendários
+                  </button>
+                </section>
+              )}
+              {connection.status === "disconnecting" ? (
+                <section>
+                  <h3>Interromper limpeza</h3>
+                  <p>
+                    Interromper mantém os eventos que ainda não foram removidos
+                    e encerra a conexão.
+                  </p>
+                  <label className="integration-check">
+                    <input
+                      type="checkbox"
+                      checked={abandonCleanup}
+                      disabled={busy}
+                      onChange={(e) => setAbandonCleanup(e.target.checked)}
+                    />
+                    Entendo que eventos pendentes de remoção poderão permanecer
+                    no Google
+                  </label>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={busy || !abandonCleanup}
+                    onClick={() =>
+                      void run(async () => {
+                        await gateway.disconnectGoogleCalendar(false);
+                        if (live.current) {
+                          setNotice({
+                            kind: "success",
+                            text: "Limpeza interrompida. Revogação solicitada; os eventos restantes serão mantidos.",
+                          });
+                          setAbandonCleanup(false);
+                        }
+                        await refresh();
+                      })
+                    }
+                  >
+                    Interromper limpeza e desconectar
+                  </button>
+                </section>
+              ) : (
+                <section>
+                  <h3>Desconectar minha conta</h3>
+                  <p>
+                    As tarefas no Gabio serão preservadas. As tags locais dos
+                    itens Google serão removidas ao desconectar.
+                  </p>
+                  <label className="integration-check">
+                    <input
+                      type="checkbox"
+                      checked={removeEvents}
+                      disabled={busy}
+                      onChange={(e) => setRemoveEvents(e.target.checked)}
+                    />
+                    Remover os eventos do Gabio antes de desconectar
+                  </label>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        await gateway.disconnectGoogleCalendar(removeEvents);
+                        if (live.current) {
+                          setAuthorizationUrl(null);
+                          setNotice({
+                            kind: "success",
+                            text: removeEvents
+                              ? "Remoção e desconexão solicitadas. Acompanhe o estado."
+                              : "Desconexão solicitada. Os eventos existentes serão mantidos.",
+                          });
+                        }
+                        await refresh();
+                      })
+                    }
+                  >
+                    Confirmar desconexão
+                  </button>
+                </section>
+              )}
+            </div>
+          </details>
+        )}
     </article>
   );
 }
