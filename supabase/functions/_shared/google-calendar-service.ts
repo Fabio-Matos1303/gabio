@@ -1,4 +1,5 @@
 import { GOOGLE_READ_SCOPES, readGoogleItems } from "./google-reading.ts";
+import { GoogleTasksProvider, TASKS_SCOPE } from "./google-tasks-provider.ts";
 import {
   authorizationUrl,
   CALENDAR_SCOPE,
@@ -16,6 +17,7 @@ export type Rpc = (
 export type CalendarConfig = {
   enabled: boolean;
   readingEnabled?: boolean;
+  tasksWriteEnabled?: boolean;
   appUrl: string;
   redirectUri: string;
   clientId: string;
@@ -187,6 +189,26 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
         const preferences = parsePreferences(pending.preferences);
         if (preferences.readSources && !deps.config.readingEnabled)
           throw new Error("reading disabled");
+        const oauthContext = object(
+          await deps.rpc("gc_export_oauth_context", { actor: pending.user_id }),
+        );
+        if (
+          !Array.isArray(oauthContext.scopes) ||
+          !Array.isArray(oauthContext.taskLists) ||
+          oauthContext.scopes.length > 20 ||
+          oauthContext.taskLists.length > 2 ||
+          oauthContext.scopes.some(
+            (s) =>
+              typeof s !== "string" ||
+              ![CALENDAR_SCOPE, TASKS_SCOPE, ...GOOGLE_READ_SCOPES].includes(s),
+          ) ||
+          oauthContext.taskLists.some(
+            (s) => typeof s !== "string" || !s || s.length > 1024,
+          )
+        )
+          throw new Error("invalid oauth context");
+        if (preferences.writeTasks && !deps.config.tasksWriteEnabled)
+          throw new Error("tasks disabled");
         const tokens = await provider.exchange(
           deps.config.clientId,
           deps.config.clientSecret,
@@ -195,6 +217,8 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
           decoded.verifier,
           [
             CALENDAR_SCOPE,
+            ...(oauthContext.scopes as string[]),
+            ...(preferences.writeTasks ? [TASKS_SCOPE] : []),
             ...(preferences.readSources ? GOOGLE_READ_SCOPES : []),
           ],
         );
@@ -211,6 +235,11 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
           throw new Error("invalid targets");
         for (const id of targets)
           await provider.verifyCalendar(tokens.accessToken, id);
+        for (const id of oauthContext.taskLists as string[])
+          await new GoogleTasksProvider(provider).verifyList(
+            tokens.accessToken,
+            id,
+          );
         const cipher = await seal(
           tokens,
           deps.config.encryptionKey,
@@ -350,14 +379,19 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
             "reminderMinutes",
             "importUpcoming",
             "readSources",
+            "writeTasks",
           ]
-        : body.action === "disconnect"
-          ? ["action", "removeEvents"]
-          : body.action === "complete"
-            ? ["action", "ticket"]
-            : body.action === "repair"
-              ? ["action", "confirmCreateNewCalendars"]
-              : ["action"];
+        : body.action === "export_preferences"
+          ? ["action", "commandId", "expectedVersion", "destination"]
+          : body.action === "disconnect"
+            ? ["action", "removeEvents"]
+            : body.action === "complete"
+              ? ["action", "ticket"]
+              : body.action === "repair_task_lists"
+                ? ["action", "confirmCreateNewLists"]
+                : body.action === "repair"
+                  ? ["action", "confirmCreateNewCalendars"]
+                  : ["action"];
     if (Object.keys(body).some((key) => !allowed.includes(key)))
       return response({ error: "Dados inválidos." }, 400);
     if (!ready(deps.config))
@@ -365,6 +399,48 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
         ? response({ enabled: false, connection: null })
         : response({ error: "Integração ainda não configurada." }, 503);
     try {
+      if (body.action === "repair_task_lists") {
+        if (body.confirmCreateNewLists !== true)
+          return response(
+            { error: "Confirme a recuperação de listas sem confirmação." },
+            400,
+          );
+        await deps.rpc("gc_tasks_repair_lists", { actor });
+        return response({ ok: true });
+      }
+      if (body.action === "export_status") {
+        const value = object(await deps.rpc("gc_export_status", { actor }));
+        if (
+          !["google_tasks", "google_calendar"].includes(
+            String(value.newTaskDestination),
+          ) ||
+          !Number.isSafeInteger(value.version) ||
+          Number(value.version) < 1 ||
+          typeof value.tasksAuthorized !== "boolean" ||
+          typeof value.routingEnabled !== "boolean" ||
+          Object.keys(value).length !== 4
+        )
+          throw new Error("invalid export status");
+        return response(value);
+      }
+      if (body.action === "export_preferences") {
+        if (
+          !uuidPattern.test(String(body.commandId)) ||
+          !Number.isSafeInteger(body.expectedVersion) ||
+          Number(body.expectedVersion) < 1 ||
+          !["google_tasks", "google_calendar"].includes(
+            String(body.destination),
+          )
+        )
+          throw new Error("invalid export preferences");
+        await deps.rpc("gc_export_preferences", {
+          actor,
+          command_id: body.commandId,
+          expected_version: body.expectedVersion,
+          destination: body.destination,
+        });
+        return response({ ok: true });
+      }
       if (body.action === "repair") {
         if (body.confirmCreateNewCalendars !== true)
           return response(
@@ -400,6 +476,29 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
             { error: "Leitura do Google ainda não habilitada." },
             400,
           );
+        if (preferences.writeTasks && !deps.config.tasksWriteEnabled)
+          return response(
+            { error: "Escrita no Google Tarefas ainda não habilitada." },
+            400,
+          );
+        const context = object(
+          await deps.rpc("gc_export_oauth_context", { actor }),
+        );
+        if (
+          !Array.isArray(context.scopes) ||
+          context.scopes.length > 20 ||
+          context.scopes.some(
+            (s) =>
+              typeof s !== "string" ||
+              ![CALENDAR_SCOPE, TASKS_SCOPE, ...GOOGLE_READ_SCOPES].includes(s),
+          )
+        )
+          throw new Error("invalid scopes");
+        if (preferences.readSources && !deps.config.readingEnabled)
+          return response(
+            { error: "Leitura do Google ainda não habilitada." },
+            400,
+          );
         const state = randomSecret();
         const verifier = randomSecret();
         const stateHash = await hashSecret(state);
@@ -421,6 +520,8 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
             await hashSecret(verifier),
             [
               CALENDAR_SCOPE,
+              ...(context.scopes as string[]),
+              ...(preferences.writeTasks ? [TASKS_SCOPE] : []),
               ...(preferences.readSources ? GOOGLE_READ_SCOPES : []),
             ],
           ),

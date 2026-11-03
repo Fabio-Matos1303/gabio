@@ -2,6 +2,7 @@ import { TaskIcon } from "./TaskIcon.js";
 import { TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskTagFields } from "./TaskTagFields.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { GOOGLE_PROJECTIONS_CHANGED_EVENT } from "../lib/google-calendar.js";
 import type { Task } from "@gabio/contracts";
 import type { AppGateway, HouseholdContext } from "../lib/app-gateway.js";
 import {
@@ -56,6 +57,8 @@ export function TaskViews({
   >(null);
   const [reading, setReading] = useState<GoogleReading | null>(null);
   const [readError, setReadError] = useState(false);
+  const [readingInvalidated, setReadingInvalidated] = useState(false);
+  const readEpoch = useRef(0);
   const [loading, setLoading] = useState(false);
   const [readSequence, setReadSequence] = useState(0);
   const readCursor = useRef<string | undefined>(undefined);
@@ -77,7 +80,23 @@ export function TaskViews({
   const [externalNotice, setExternalNotice] = useState("");
   const tagAttempt = useRef<ExternalTagsCommand | null>(null);
   useEffect(() => {
+    const invalidate = () => {
+      readEpoch.current++;
+      readCursor.current = undefined;
+      readAttempt.current = null;
+      setReading(null);
+      setExternalCard(null);
+      setExternalEditor(null);
+      setReadingInvalidated(true);
+      setLoading(false);
+    };
+    window.addEventListener(GOOGLE_PROJECTIONS_CHANGED_EVENT, invalidate);
+    return () =>
+      window.removeEventListener(GOOGLE_PROJECTIONS_CHANGED_EVENT, invalidate);
+  }, []);
+  useEffect(() => {
     let active = true;
+    const epoch = readEpoch.current;
     if (!gateway.readGoogleItems) return;
     setLoading(true);
     setReadError(false);
@@ -98,7 +117,8 @@ export function TaskViews({
     readAttempt.current.promise
       .then((value) => {
         const parsed = googleReadingSchema.parse(value);
-        if (active) {
+        if (active && epoch === readEpoch.current) {
+          setReadingInvalidated(false);
           setReading((current) => {
             if (
               parsed.state === "rate_limited" &&
@@ -132,13 +152,13 @@ export function TaskViews({
         }
       })
       .catch(() => {
-        if (active) {
+        if (active && epoch === readEpoch.current) {
           setReading(null);
           setReadError(true);
         }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active && epoch === readEpoch.current) setLoading(false);
       });
     return () => {
       active = false;
@@ -822,7 +842,8 @@ export function TaskViews({
         </TaskCardDialog>
       )}
       {gateway.readGoogleItems &&
-        (readError ||
+        (readingInvalidated ||
+          readError ||
           (reading &&
             reading.state !== "disabled" &&
             (reading.state !== "connected" ||
@@ -835,9 +856,11 @@ export function TaskViews({
               onClick={() => setMoreOpen(true)}
             >
               <TaskIcon name="warning" />
-              {reading?.state === "consent_required"
-                ? "Autorizar leitura Google"
-                : "Google precisa de atenção"}
+              {readingInvalidated
+                ? "Atualizar leitura Google"
+                : reading?.state === "consent_required"
+                  ? "Autorizar leitura Google"
+                  : "Google precisa de atenção"}
               <span className="sr-only">. Abrir detalhes da leitura</span>
             </button>
           </div>
@@ -865,6 +888,12 @@ export function TaskViews({
               aria-label="Leitura do Google"
             >
               {loading && <p role="status">Atualizando itens do Google…</p>}
+              {readingInvalidated && (
+                <p role="status">
+                  A sincronização mudou. Atualize a leitura para consultar os
+                  itens externos novamente.
+                </p>
+              )}
               {readError ? (
                 <p role="alert">
                   Não foi possível consultar o Google. Suas tarefas Gabio

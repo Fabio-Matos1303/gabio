@@ -1,0 +1,63 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select no_plan();
+insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data) values
+('00000000-0000-0000-0000-000000000000','e1000000-0000-4000-8000-000000000001','authenticated','authenticated','kind-owner@example.test','',now(),now(),now(),'{}','{}'),
+('00000000-0000-0000-0000-000000000000','e1000000-0000-4000-8000-000000000002','authenticated','authenticated','kind-member@example.test','',now(),now(),now(),'{}','{}'),
+('00000000-0000-0000-0000-000000000000','e1000000-0000-4000-8000-000000000003','authenticated','authenticated','kind-outsider@example.test','',now(),now(),now(),'{}','{}');
+insert into public.households(id,name,created_by) values('e2000000-0000-4000-8000-000000000001','Tipos sintéticos','e1000000-0000-4000-8000-000000000001');
+insert into public.household_members(household_id,user_id,role) values
+('e2000000-0000-4000-8000-000000000001','e1000000-0000-4000-8000-000000000001','owner'),
+('e2000000-0000-4000-8000-000000000001','e1000000-0000-4000-8000-000000000002','member');
+select public.gc_finish_oauth('e1000000-0000-4000-8000-000000000001','e2000000-0000-4000-8000-000000000001','synthetic-encrypted-tokens','["https://www.googleapis.com/auth/calendar.app.created","https://www.googleapis.com/auth/tasks"]','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":null}');
+update app_private.google_export_settings set activated_at=now();
+create temporary table kind_results(name text primary key,response jsonb);
+grant all on kind_results to authenticated;
+set local role authenticated;
+select set_config('request.jwt.claim.sub','e1000000-0000-4000-8000-000000000001',true);
+insert into kind_results values('task',public.execute_task_command('e3000000-0000-4000-8000-000000000001','{"type":"create","payload":{"title":"Tarefa sintética","visibility":"household","kind":"task"}}'));
+insert into kind_results values('event',public.execute_task_command('e3000000-0000-4000-8000-000000000002','{"type":"create","payload":{"title":"Evento privado sintético","kind":"event","dueAt":"2027-01-04T12:00:00Z","eventEndsAt":"2027-01-04T13:30:00Z","recurrence":"daily","visibility":"private"}}'));
+select is((select response#>>'{task,kind}' from kind_results where name='event'),'event','receipt preserves event kind');
+select is((select response#>>'{task,eventEndsAt}' from kind_results where name='event'),'2027-01-04T13:30:00+00:00','receipt preserves event end');
+select is(jsonb_array_length(public.list_tasks_page()),1,'legacy listing excludes events instead of breaking strict clients');
+select is(jsonb_array_length(public.list_tasks_page_v2()),2,'new listing includes both types');
+select throws_ok($$select public.execute_task_command('e3000000-0000-4000-8000-000000000003','{"type":"create","payload":{"title":"Inválido","kind":"event"}}')$$,'22023',null,'event requires interval');
+select throws_ok($$select public.execute_task_command('e3000000-0000-4000-8000-000000000003','{"type":"create","payload":{"title":"Inválido","kind":"event","dueAt":"2027-01-04T12:00:00Z","eventEndsAt":"2027-01-04T11:00:00Z"}}')$$,'22023',null,'end before start rejected');
+select throws_ok($$select public.execute_task_command('e3000000-0000-4000-8000-000000000003','{"type":"create","payload":{"title":"Inválido","kind":"event","dueAt":"2027-01-04T12:00:00Z","eventEndsAt":"infinity"}}')$$,'22023',null,'infinite timestamps rejected at RPC boundary');
+select throws_ok($$select public.execute_task_command('e3000000-0000-4000-8000-000000000003','{"type":"create","payload":{"title":"Inválido","kind":"other"}}')$$,'22023',null,'unknown kind rejected');
+insert into kind_results select 'done',public.execute_task_command('e3000000-0000-4000-8000-000000000004',jsonb_build_object('type','set_status','payload',jsonb_build_object('taskId',response#>>'{task,id}','expectedVersion',1,'status','completed'))) from kind_results where name='event';
+reset role;
+select is((select kind from public.tasks where previous_occurrence_id=(select (response#>>'{task,id}')::uuid from kind_results where name='event')),'event','next recurrence keeps kind');
+select is((select event_ends_at-due_at from public.tasks where previous_occurrence_id=(select (response#>>'{task,id}')::uuid from kind_results where name='event')),interval '90 minutes','recurrence preserves explicit duration');
+select is((select provider from public.task_calendar_links where task_id=(select (response#>>'{task,id}')::uuid from kind_results where name='event')),'google_calendar','event always projects to Calendar');
+select is((select provider from public.task_calendar_links where task_id=(select (response#>>'{task,id}')::uuid from kind_results where name='task')),'google_tasks','task follows configured default');
+update public.google_calendar_connections set export_household=false;
+set local role authenticated;
+insert into kind_results select 'converted',public.execute_task_command('e3000000-0000-4000-8000-000000000005',jsonb_build_object('type','update','payload',jsonb_build_object('taskId',response#>>'{task,id}','expectedVersion',1,'kind','event','dueAt','2027-01-05T12:00:00Z','eventEndsAt','2027-01-05T13:00:00Z'))) from kind_results where name='task';
+reset role;
+select is((select provider from app_private.google_export_intents where task_id=(select (response#>>'{task,id}')::uuid from kind_results where name='task')),'google_calendar','conversion changes known intent even while export category is paused');
+select public.gc_preferences('e1000000-0000-4000-8000-000000000001','{"exportHousehold":true,"exportPrivate":true,"reminderMinutes":null}');
+select is((select count(*)::integer from public.task_calendar_links where task_id=(select (response#>>'{task,id}')::uuid from kind_results where name='task')),2,'conversion retains old identity for cleanup and creates separate new-provider link');
+update public.outbox_events set processed_at=now() where gc_connection_id is not null;
+select public.gc_queue_task((select (response#>>'{task,id}')::uuid from kind_results where name='task'));
+create temporary table conversion_job as select value j from jsonb_array_elements(public.gc_claim_jobs_v2(2,true));
+select is((select j->>'action' from conversion_job),'delete','old-provider cleanup precedes new export');
+select is((select j->>'provider' from conversion_job),'google_tasks','cleanup uses old provider');
+select public.gc_finish_job((j->>'jobId')::uuid,(j->>'leaseToken')::uuid,'{"status":"deleted"}') from conversion_job;
+create temporary table event_projection_job as select value j from jsonb_array_elements(public.gc_claim_jobs_v2(2,true));
+select is((select j->>'action' from event_projection_job),'upsert','new projection proceeds after confirmed cleanup');
+select public.gc_finish_job((j->>'jobId')::uuid,(j->>'leaseToken')::uuid,'{"status":"synced","etag":"synthetic-etag","sentVersion":2}') from event_projection_job;
+set local role authenticated;
+insert into kind_results select 'back_to_task',public.execute_task_command('e3000000-0000-4000-8000-000000000006',jsonb_build_object('type','update','payload',jsonb_build_object('taskId',response#>>'{task,id}','expectedVersion',2,'kind','task'))) from kind_results where name='task';
+reset role;
+select is((select kind from public.tasks where id=(select (response#>>'{task,id}')::uuid from kind_results where name='task')),'task','event can become a task again');
+select ok((select event_ends_at is null from public.tasks where id=(select (response#>>'{task,id}')::uuid from kind_results where name='task')),'conversion to task clears event-only interval');
+select is((select provider from app_private.google_export_intents where task_id=(select (response#>>'{task,id}')::uuid from kind_results where name='task')),'google_tasks','conversion back follows current task preference');
+set local role authenticated;
+select set_config('request.jwt.claim.sub','e1000000-0000-4000-8000-000000000002',true);
+select is(jsonb_array_length(public.list_tasks_page_v2()),1,'member cannot read private event or private recurrence');
+select set_config('request.jwt.claim.sub','e1000000-0000-4000-8000-000000000003',true);
+select is(jsonb_array_length(public.list_tasks_page_v2()),0,'outside user cannot read events');
+reset role;
+select * from finish();
+rollback;

@@ -165,6 +165,8 @@ update public.task_calendar_links set sync_status='synced';
 update public.google_calendar_connections set last_reconciled_at=now()-interval '25 hours',worker_lease=null,worker_lease_until=null where user_id='a1000000-0000-4000-8000-000000000001';
 insert into public.tasks(id,household_id,owner_user_id,created_by,title,due_at,idempotency_key,visibility) values('a3000000-0000-4000-8000-000000000004','a2000000-0000-4000-8000-000000000001',null,'a1000000-0000-4000-8000-000000000001','Histórica não consentida',null,'a4000000-0000-4000-8000-000000000004','household');
 -- No trigger/export: simulate a historic row predating consent by temporarily disabling export preference.
+-- Under ADR-015 even a task without deadline has an intention; remove it to model a pre-consent row.
+delete from app_private.google_export_intents where task_id='a3000000-0000-4000-8000-000000000004';
 update public.google_calendar_connections set export_household=false where user_id='a1000000-0000-4000-8000-000000000001';
 update public.tasks set due_at=now()-interval '30 days' where id='a3000000-0000-4000-8000-000000000004';
 update public.google_calendar_connections set export_household=true where user_id='a1000000-0000-4000-8000-000000000001';

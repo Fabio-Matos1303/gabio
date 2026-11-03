@@ -4,11 +4,13 @@ import {
   screen,
   within,
   waitFor,
+  act,
 } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { taskSchema } from "@gabio/contracts";
 import { StrictMode } from "react";
 import { TaskViews } from "./TaskViews.js";
+import { GOOGLE_PROJECTIONS_CHANGED_EVENT } from "../lib/google-calendar.js";
 import type { AppGateway, HouseholdContext } from "../lib/app-gateway.js";
 const userId = "10000000-0000-4000-8000-000000000001";
 const house: HouseholdContext = {
@@ -37,6 +39,45 @@ const tasks = ["Limpar cozinha", "Comprar materiais"].map((title, i) =>
   }),
 );
 describe("TaskViews", () => {
+  it("discards an in-flight Google read after synchronization changes without automatic polling", async () => {
+    let resolve!: (value: unknown) => void;
+    const readGoogleItems = vi.fn().mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    render(
+      <TaskViews
+        tasks={tasks}
+        renderTask={(t) => <article key={t.id}>{t.title}</article>}
+        gateway={{ readGoogleItems } as unknown as AppGateway}
+        household={house}
+        userId={userId}
+        catalog={[]}
+        onTagsChanged={async () => {}}
+      />,
+    );
+    await waitFor(() => expect(readGoogleItems).toHaveBeenCalledTimes(1));
+    act(() =>
+      window.dispatchEvent(new Event(GOOGLE_PROJECTIONS_CHANGED_EVENT)),
+    );
+    await act(async () =>
+      resolve({
+        state: "connected",
+        generation: "50000000-0000-4000-8000-000000000001",
+        checkedAt: "2026-11-03T12:00:00Z",
+        tasksState: "ok",
+        calendarState: "ok",
+        sources: [],
+        items: [],
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: /Atualizar leitura Google/ }),
+    ).toBeInTheDocument();
+    expect(readGoogleItems).toHaveBeenCalledTimes(1);
+  });
   it("orders by nearest deadline and shows filtered counts per task phase without a total", () => {
     render(
       <TaskViews

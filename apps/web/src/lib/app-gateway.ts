@@ -9,6 +9,8 @@ import type {
   GoogleCalendarPreferences,
   GoogleCalendarStatus,
   GoogleReadingPermission,
+  GoogleExportStatus,
+  GoogleExportPreferences,
 } from "./google-calendar.js";
 import type {
   FinanceCommandConfirmation,
@@ -144,6 +146,10 @@ export interface AppGateway {
   requestTelegramPairing(): Promise<TelegramPairing>;
   revokeTelegramConnection(): Promise<void>;
   getGoogleCalendarStatus(): Promise<GoogleCalendarStatus>;
+  getGoogleExportStatus?(): Promise<GoogleExportStatus>;
+  saveGoogleExportPreferences?(
+    preferences: GoogleExportPreferences,
+  ): Promise<void>;
   getGoogleReadingPermission?(): Promise<GoogleReadingPermission>;
   connectGoogleCalendar(
     preferences: GoogleCalendarConnect,
@@ -153,6 +159,7 @@ export interface AppGateway {
   ): Promise<void>;
   completeGoogleCalendar(ticket: string): Promise<void>;
   repairGoogleCalendar(): Promise<void>;
+  repairGoogleTaskLists?(): Promise<void>;
   syncGoogleCalendar(): Promise<void>;
   disconnectGoogleCalendar(removeEvents: boolean): Promise<void>;
   listTaskTags?(): Promise<TagRecord[]>;

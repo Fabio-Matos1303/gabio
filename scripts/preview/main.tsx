@@ -245,6 +245,11 @@ const gateway: AppGateway = {
           ? {
               tags: command.payload.tags ?? old.tags,
               title: command.payload.title ?? old.title,
+              kind: command.payload.kind ?? old.kind,
+              eventEndsAt:
+                command.payload.kind === "task"
+                  ? null
+                  : (command.payload.eventEndsAt ?? old.eventEndsAt),
               dueAt: command.payload.dueAt,
               recurrence: command.payload.recurrence ?? old.recurrence,
               recurrenceRule: command.payload.recurrenceRule ?? null,

@@ -1,5 +1,10 @@
 import { googleReadingPermissionSchema } from "./google-calendar.js";
 import {
+  googleExportStatusSchema,
+  googleExportPreferencesSchema,
+  type GoogleExportPreferences,
+} from "./google-calendar.js";
+import {
   tagRecordSchema,
   tagMutationSchema,
   googleReadingSchema,
@@ -365,6 +370,20 @@ export class SupabaseGateway implements AppGateway {
     );
   }
 
+  async getGoogleExportStatus() {
+    return googleExportStatusSchema.parse(
+      await this.calendarAction({ action: "export_status" }),
+    );
+  }
+  async saveGoogleExportPreferences(preferences: GoogleExportPreferences) {
+    googleCalendarOkSchema.parse(
+      await this.calendarAction({
+        action: "export_preferences",
+        ...googleExportPreferencesSchema.parse(preferences),
+      }),
+    );
+  }
+
   async connectGoogleCalendar(preferences: GoogleCalendarConnect) {
     const validated = googleCalendarConnectSchema.parse(preferences);
     return googleAuthorizationSchema.parse(
@@ -398,6 +417,14 @@ export class SupabaseGateway implements AppGateway {
       await this.calendarAction({
         action: "repair",
         confirmCreateNewCalendars: true,
+      }),
+    );
+  }
+  async repairGoogleTaskLists() {
+    googleCalendarOkSchema.parse(
+      await this.calendarAction({
+        action: "repair_task_lists",
+        confirmCreateNewLists: true,
       }),
     );
   }
@@ -498,7 +525,7 @@ export class SupabaseGateway implements AppGateway {
     const tasks = [];
     for (let offset = 0; offset <= 1000000; offset += 500) {
       const { data, error } = await this.configuredClient().rpc(
-        "list_tasks_page",
+        "list_tasks_page_v2",
         { page_offset: offset },
       );
       if (error) throw friendlyError();

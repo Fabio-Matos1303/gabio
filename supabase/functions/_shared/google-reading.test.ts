@@ -207,7 +207,10 @@ test("reading paginates, suppresses only known exported ids and keeps source fai
     userId: actor,
     householdId: house,
     tokenCipher: cipher,
-    links: [{ calendarId: "cal", eventId: "known" }],
+    links: [
+      { calendarId: "cal", eventId: "known" },
+      { calendarId: "list", eventId: "one", provider: "google_tasks" },
+    ],
     annotations: [],
   };
   let taskCalls = 0;
@@ -264,7 +267,8 @@ test("reading paginates, suppresses only known exported ids and keeps source fai
   };
   const result = await readGoogleItems(deps, actor, "2026-11");
   assert.equal(taskCalls, 2);
-  assert.equal(result.items.length, 3);
+  assert.equal(result.items.length, 2);
+  assert.ok(!result.items.some((i) => i.remoteId === "one"));
   assert.ok(result.items.some((i) => i.remoteId === "other"));
   assert.ok(!result.items.some((i) => i.remoteId === "known"));
   assert.equal(result.tasksState, "ok");

@@ -145,7 +145,7 @@ export function viewItems(tasks: Task[], external: ExternalItem[]): ViewItem[] {
         status: t.status,
         date: t.dueAt ? householdDate(new Date(t.dueAt)) : null,
         startsAt: t.dueAt ? new Date(t.dueAt).toISOString() : null,
-        endsAt: null,
+        endsAt: t.kind === "event" ? (t.eventEndsAt ?? null) : null,
         endDate: null,
         tags: t.tags ?? [],
         visibility: t.visibility,

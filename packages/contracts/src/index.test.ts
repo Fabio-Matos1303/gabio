@@ -12,6 +12,61 @@ import {
   taskGatewayCommandSchema,
 } from "./index.js";
 
+describe("task and event kinds", () => {
+  const command = {
+    commandId: "90000000-0000-4000-8000-000000000001",
+    type: "create",
+    payload: {
+      title: "Evento sintético",
+      kind: "event",
+      dueAt: "2027-01-04T12:00:00Z",
+      eventEndsAt: "2027-01-04T13:00:00Z",
+      assigneeUserId: null,
+      visibility: "household",
+      recurrence: "none",
+    },
+  };
+  it("accepts an event with explicit interval and rejects missing or reversed end", () => {
+    expect(taskGatewayCommandSchema.safeParse(command).success).toBe(true);
+    for (const eventEndsAt of [
+      null,
+      "2027-01-04T11:00:00Z",
+      "2027-01-04T12:00:00Z",
+      "infinity",
+    ])
+      expect(
+        taskGatewayCommandSchema.safeParse({
+          ...command,
+          payload: { ...command.payload, eventEndsAt },
+        }).success,
+      ).toBe(false);
+  });
+  it("rejects task intervals and unknown types without inventing a default in legacy updates", () => {
+    expect(
+      taskGatewayCommandSchema.safeParse({
+        ...command,
+        payload: { ...command.payload, kind: "task" },
+      }).success,
+    ).toBe(false);
+    expect(
+      taskGatewayCommandSchema.safeParse({
+        ...command,
+        payload: { ...command.payload, kind: "unknown" },
+      }).success,
+    ).toBe(false);
+    const update = taskGatewayCommandSchema.parse({
+      commandId: command.commandId,
+      type: "update",
+      payload: {
+        taskId: command.commandId,
+        expectedVersion: 1,
+        title: "Atualização antiga",
+      },
+    });
+    expect(update.payload).not.toHaveProperty("kind");
+  });
+});
+
 describe("proposedCommandSchema", () => {
   it("rejects a custom model proposal without its recurrence rule", () => {
     expect(() =>

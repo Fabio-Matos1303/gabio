@@ -7,7 +7,14 @@ import {
   unseal,
 } from "./google-calendar-provider.ts";
 import type { Rpc, CalendarConfig } from "./google-calendar-service.ts";
+import {
+  GoogleTasksProvider,
+  projectGoogleTask,
+} from "./google-tasks-provider.ts";
 type Job = {
+  provider?: "google_tasks" | "google_calendar";
+  remoteTaskId?: string | null;
+  insertionAttempted?: boolean;
   jobId: string;
   leaseToken: string;
   connectionId: string;
@@ -16,9 +23,11 @@ type Job = {
   tokenCipher: string;
   action: "upsert" | "delete" | "revoke";
   task: {
+    kind?: "task" | "event";
+    eventEndsAt?: string | null;
     id: string;
     title: string;
-    dueAt: string;
+    dueAt: string | null;
     status: string;
     version: number;
   } | null;
@@ -34,6 +43,20 @@ function parseJob(value: unknown): Job {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("invalid job");
   const row = value as Record<string, unknown>;
+  const tasks = row.provider === "google_tasks";
+  if (
+    (row.provider !== undefined &&
+      !["google_tasks", "google_calendar"].includes(String(row.provider))) ||
+    (tasks &&
+      (typeof row.insertionAttempted !== "boolean" ||
+        !(
+          row.remoteTaskId === null ||
+          (typeof row.remoteTaskId === "string" &&
+            row.remoteTaskId.length > 0 &&
+            row.remoteTaskId.length <= 1024)
+        )))
+  )
+    throw new Error("invalid provider");
   const uuid =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   if (
@@ -72,11 +95,22 @@ function parseJob(value: unknown): Job {
     if (
       !task ||
       typeof task !== "object" ||
+      (task.kind !== undefined &&
+        !["task", "event"].includes(String(task.kind))) ||
+      (tasks && task.kind === "event") ||
+      (task.kind === "event" &&
+        (typeof task.eventEndsAt !== "string" ||
+          !Number.isFinite(Date.parse(task.eventEndsAt)) ||
+          typeof task.dueAt !== "string" ||
+          Date.parse(task.eventEndsAt) <= Date.parse(task.dueAt))) ||
       !uuid.test(String(task.id)) ||
       typeof task.title !== "string" ||
       task.title.length > 240 ||
-      typeof task.dueAt !== "string" ||
-      !Number.isFinite(Date.parse(task.dueAt)) ||
+      !(
+        (tasks && task.dueAt === null) ||
+        (typeof task.dueAt === "string" &&
+          Number.isFinite(Date.parse(task.dueAt)))
+      ) ||
       typeof task.version !== "number" ||
       !Number.isSafeInteger(task.version) ||
       !["open", "in_progress", "completed"].includes(String(task.status)) ||
@@ -107,8 +141,10 @@ export function createCalendarWorker(deps: {
   workerSecret: string;
   rpc: Rpc;
   provider?: GoogleCalendarProvider;
+  tasksProvider?: GoogleTasksProvider;
 }) {
   const provider = deps.provider ?? new GoogleCalendarProvider();
+  const tasksProvider = deps.tasksProvider ?? new GoogleTasksProvider(provider);
   const respond = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
@@ -136,7 +172,10 @@ export function createCalendarWorker(deps: {
       return respond({ error: "Integração indisponível." }, 503);
     let jobs: unknown;
     try {
-      jobs = await deps.rpc("gc_claim_jobs", { batch_size: 2 });
+      jobs = await deps.rpc("gc_claim_jobs_v2", {
+        batch_size: 2,
+        tasks_enabled: deps.config.tasksWriteEnabled === true,
+      });
     } catch {
       return respond({ error: "Fila indisponível." }, 503);
     }
@@ -159,6 +198,20 @@ export function createCalendarWorker(deps: {
         });
         if (validated === null) continue;
         job = parseJob(validated);
+        if (
+          job.provider === "google_tasks" &&
+          job.action === "delete" &&
+          !job.remoteTaskId &&
+          !job.insertionAttempted
+        ) {
+          await deps.rpc("gc_finish_job", {
+            job_id: job.jobId,
+            lease_token: job.leaseToken,
+            result: { status: "deleted" },
+          });
+          processed++;
+          continue;
+        }
         let tokens = parseStoredTokens(
           await unseal(
             job.tokenCipher,
@@ -197,7 +250,35 @@ export function createCalendarWorker(deps: {
           job.tokenCipher = nextCipher;
         }
         if (job.action === "delete") {
-          if (job.calendarId && job.eventId)
+          if (job.provider === "google_tasks") {
+            let remoteId = job.remoteTaskId;
+            if (
+              !remoteId &&
+              job.insertionAttempted &&
+              job.calendarId &&
+              job.eventId
+            ) {
+              remoteId = await tasksProvider.findAttempt(
+                tokens.accessToken,
+                job.calendarId,
+                job.eventId,
+              );
+              if (!remoteId)
+                throw new ProviderError("tasks_creation_uncertain");
+              await deps.rpc("gc_tasks_identity", {
+                job_id: job.jobId,
+                lease_token: job.leaseToken,
+                remote_id: remoteId,
+                previous_cipher: job.tokenCipher,
+              });
+            }
+            if (job.calendarId && remoteId)
+              await tasksProvider.removeTask(
+                tokens.accessToken,
+                job.calendarId,
+                remoteId,
+              );
+          } else if (job.calendarId && job.eventId)
             await provider.removeEvent(
               tokens.accessToken,
               job.calendarId,
@@ -213,6 +294,90 @@ export function createCalendarWorker(deps: {
         }
         if (!job.task || !job.eventId || !job.targetKind)
           throw new ProviderError("invalid_response");
+        if (job.provider === "google_tasks") {
+          if (!deps.config.tasksWriteEnabled)
+            throw new ProviderError("unavailable", true);
+          let list = job.calendarId;
+          if (!list) {
+            if (job.targetState === "creating")
+              throw new ProviderError("tasks_creation_uncertain");
+            await deps.rpc("gc_tasks_target", {
+              job_id: job.jobId,
+              lease_token: job.leaseToken,
+              list_id: null,
+            });
+            list = await tasksProvider.createList(
+              tokens.accessToken,
+              job.targetKind,
+            );
+            await deps.rpc("gc_tasks_target", {
+              job_id: job.jobId,
+              lease_token: job.leaseToken,
+              list_id: list,
+            });
+          }
+          const current = await deps.rpc("gc_validate_job", {
+            job_id: job.jobId,
+            lease_token: job.leaseToken,
+          });
+          if (current === null) continue;
+          const latest = parseJob(current);
+          if (latest.tokenCipher !== job.tokenCipher)
+            throw new ProviderError("unavailable", true);
+          job = latest;
+          if (job.action !== "upsert" || !job.task || !job.eventId) continue;
+          const projection = projectGoogleTask(
+            job.task,
+            job.eventId,
+            deps.config.appUrl,
+          );
+          let remoteId = job.remoteTaskId;
+          if (!remoteId && job.insertionAttempted) {
+            remoteId = await tasksProvider.findAttempt(
+              tokens.accessToken,
+              list,
+              job.eventId,
+            );
+            if (!remoteId) throw new ProviderError("tasks_creation_uncertain");
+            await deps.rpc("gc_tasks_identity", {
+              job_id: job.jobId,
+              lease_token: job.leaseToken,
+              remote_id: remoteId,
+              previous_cipher: job.tokenCipher,
+            });
+          }
+          if (remoteId)
+            await tasksProvider.updateTask(
+              tokens.accessToken,
+              list,
+              remoteId,
+              projection,
+            );
+          else {
+            await deps.rpc("gc_tasks_attempt", {
+              job_id: job.jobId,
+              lease_token: job.leaseToken,
+            });
+            remoteId = await tasksProvider.createTask(
+              tokens.accessToken,
+              list,
+              projection,
+            );
+            await deps.rpc("gc_tasks_identity", {
+              job_id: job.jobId,
+              lease_token: job.leaseToken,
+              remote_id: remoteId,
+              previous_cipher: job.tokenCipher,
+            });
+          }
+          await deps.rpc("gc_finish_job", {
+            job_id: job.jobId,
+            lease_token: job.leaseToken,
+            result: { status: "synced", sentVersion: job.task.version },
+          });
+          processed++;
+          continue;
+        }
         let calendarId = job.calendarId;
         if (!calendarId) {
           if (job.targetState === "creating")
@@ -249,7 +414,11 @@ export function createCalendarWorker(deps: {
             tokens.accessToken,
             calendarId,
             job.eventId,
-            projectTask(job.task, job.reminderMinutes, deps.config.appUrl),
+            projectTask(
+              { ...job.task, dueAt: job.task.dueAt! },
+              job.reminderMinutes,
+              deps.config.appUrl,
+            ),
             job.etag,
           );
         } catch (error) {
@@ -271,7 +440,7 @@ export function createCalendarWorker(deps: {
         await deps.rpc("gc_finish_job", {
           job_id: job.jobId,
           lease_token: job.leaseToken,
-          result: { status: "synced", etag },
+          result: { status: "synced", etag, sentVersion: job.task.version },
         });
         processed++;
       } catch (error) {

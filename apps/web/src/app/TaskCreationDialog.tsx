@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { HouseholdContext } from "../lib/app-gateway.js";
 import { TaskRecurrenceFields } from "./TaskRecurrenceFields.js";
+import { TaskKindFields } from "./TaskKindFields.js";
+import type { TaskKind } from "@gabio/contracts";
 
 export function TaskCreationDialog({
   open,
@@ -33,10 +35,12 @@ export function TaskCreationDialog({
     "household",
   );
   useEffect(() => setVisibility("household"), [resetKey]);
+  const [kind, setKind] = useState<TaskKind>("task");
+  useEffect(() => setKind("task"), [resetKey]);
   return (
     <TaskCardDialog
       open={open}
-      title="Nova tarefa"
+      title={kind === "event" ? "Novo evento" : "Nova tarefa"}
       busy={busy}
       onClose={onClose}
     >
@@ -55,10 +59,11 @@ export function TaskCreationDialog({
               placeholder="O que precisa ser feito?"
             />
           </label>
-          <label>
-            Primeiro prazo
-            <input name="dueAt" type="datetime-local" disabled={busy} />
-          </label>
+          <TaskKindFields
+            key={resetKey}
+            disabled={busy}
+            onKindChange={setKind}
+          />
           <label>
             Responsável
             <select name="assigneeUserId" defaultValue="" disabled={busy}>
@@ -102,7 +107,11 @@ export function TaskCreationDialog({
             Cancelar
           </button>
           <button className="primary-button" disabled={busy}>
-            {busy ? "Enviando…" : "Criar tarefa"}
+            {busy
+              ? "Enviando…"
+              : kind === "event"
+                ? "Criar evento"
+                : "Criar tarefa"}
           </button>
         </footer>
       </form>

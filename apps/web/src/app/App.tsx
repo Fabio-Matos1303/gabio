@@ -36,6 +36,7 @@ import { FinancePanel } from "./FinancePanel.js";
 import { HomeCalendar } from "./HomeCalendar.js";
 import { HomeInsights } from "./HomeInsights.js";
 import { BottomNavigation } from "./BottomNavigation.js";
+import { TaskKindFields } from "./TaskKindFields.js";
 import { TaskCreationDialog } from "./TaskCreationDialog.js";
 import {
   TaskRecurrenceFields,
@@ -481,8 +482,10 @@ function TaskPanel({
   const [creationTitle, setCreationTitle] = useState("");
   const [creationSequence, setCreationSequence] = useState(0);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingKind, setEditingKind] = useState<"task" | "event">("task");
   useEffect(() => {
     setEditingVisibility(editingTask?.visibility ?? "household");
+    setEditingKind(editingTask?.kind ?? "task");
   }, [editingTask]);
   const [savingTask, setSavingTask] = useState(false);
   const [sendingTask, setSendingTask] = useState(false);
@@ -695,6 +698,17 @@ function TaskPanel({
       return;
     }
     const assigneeUserId = String(data.get("assigneeUserId") || "") || null;
+    const eventEnd = parseTaskDueAt(String(data.get("eventEndsAt") ?? ""));
+    if (
+      data.get("kind") === "event" &&
+      (!dueDate || !eventEnd || eventEnd <= dueDate)
+    ) {
+      setNotice({
+        kind: "error",
+        text: "Informe o início e um fim posterior para o evento.",
+      });
+      return;
+    }
     const visibility = String(data.get("visibility"));
     const recurrence = String(data.get("recurrence"));
     const recurrenceRule = parseRecurrenceRule(data);
@@ -721,6 +735,11 @@ function TaskPanel({
       type: "create",
       payload: {
         title: String(data.get("title")),
+        kind: String(data.get("kind") ?? "task"),
+        eventEndsAt:
+          parseTaskDueAt(
+            String(data.get("eventEndsAt") ?? ""),
+          )?.toISOString() ?? null,
         dueAt: dueDate?.toISOString() ?? null,
         assigneeUserId,
         visibility,
@@ -761,6 +780,17 @@ function TaskPanel({
       setNotice({ kind: "error", text: "Informe um prazo válido." });
       return;
     }
+    const eventEnd = parseTaskDueAt(String(form.get("eventEndsAt") ?? ""));
+    if (
+      form.get("kind") === "event" &&
+      (!dueDate || !eventEnd || eventEnd <= dueDate)
+    ) {
+      setNotice({
+        kind: "error",
+        text: "Informe o início e um fim posterior para o evento.",
+      });
+      return;
+    }
     const parsed = taskUpdateCommandSchema.safeParse({
       commandId: crypto.randomUUID(),
       type: "update",
@@ -768,6 +798,11 @@ function TaskPanel({
         taskId: editingTask.id,
         expectedVersion: editingTask.version,
         title: String(form.get("title") ?? ""),
+        kind: String(form.get("kind") ?? editingTask.kind ?? "task"),
+        eventEndsAt:
+          parseTaskDueAt(
+            String(form.get("eventEndsAt") ?? ""),
+          )?.toISOString() ?? null,
         dueAt: dueDate?.toISOString() ?? null,
         assigneeUserId: String(form.get("assigneeUserId") ?? "") || null,
         recurrence: String(form.get("recurrence")),
@@ -780,6 +815,8 @@ function TaskPanel({
       ? taskSchema.safeParse({
           ...editingTask,
           title: parsed.data.payload.title,
+          kind: parsed.data.payload.kind,
+          eventEndsAt: parsed.data.payload.eventEndsAt,
           dueAt: parsed.data.payload.dueAt,
           assigneeUserId: parsed.data.payload.assigneeUserId,
           recurrence: parsed.data.payload.recurrence,
@@ -853,6 +890,7 @@ function TaskPanel({
     const assignee = memberName(task.assigneeUserId);
     const dueDate = task.dueAt ? new Date(task.dueAt) : null;
     const overdue =
+      task.kind !== "event" &&
       (task.status === "open" || task.status === "in_progress") &&
       dueDate !== null &&
       dueDate.getTime() < Date.now();
@@ -881,6 +919,17 @@ function TaskPanel({
           ))}
         </div>
         <div className="task-card-meta">
+          {task.kind === "event" && <span>Evento</span>}
+          {task.kind === "event" && task.eventEndsAt && (
+            <span>
+              Até{" "}
+              {new Intl.DateTimeFormat("pt-BR", {
+                timeZone: "America/Bahia",
+                dateStyle: "short",
+                timeStyle: "short",
+              }).format(new Date(task.eventEndsAt))}
+            </span>
+          )}
           {assignee && <span>{assignee}</span>}
           {dueDate && (
             <time
@@ -1054,9 +1103,13 @@ function TaskPanel({
         <TaskCardDialog
           open
           title={
-            editingTask.status === "completed"
-              ? "Cartão da tarefa"
-              : "Editar tarefa"
+            editingKind === "event"
+              ? editingTask.status === "completed"
+                ? "Cartão do evento"
+                : "Editar evento"
+              : editingTask.status === "completed"
+                ? "Cartão da tarefa"
+                : "Editar tarefa"
           }
           onClose={() => setEditingTask(null)}
           busy={savingTask || sendingTask}
@@ -1097,24 +1150,11 @@ function TaskPanel({
                     maxLength={240}
                   />
                 </label>
-                <label>
-                  Prazo
-                  <input
-                    disabled={sendingTask}
-                    name="dueAt"
-                    type="datetime-local"
-                    defaultValue={
-                      editingTask.dueAt
-                        ? new Date(
-                            new Date(editingTask.dueAt).getTime() -
-                              3 * 60 * 60 * 1000,
-                          )
-                            .toISOString()
-                            .slice(0, 16)
-                        : ""
-                    }
-                  />
-                </label>
+                <TaskKindFields
+                  task={editingTask}
+                  disabled={sendingTask}
+                  onKindChange={setEditingKind}
+                />
                 <label>
                   Responsável
                   <select
@@ -1184,7 +1224,7 @@ function TaskPanel({
                   className="primary-button"
                   disabled={savingTask || sendingTask}
                 >
-                  Salvar tarefa
+                  {editingKind === "event" ? "Salvar evento" : "Salvar tarefa"}
                 </button>
               )}
               <button
@@ -1455,7 +1495,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: task-phase-order-2026.11.03.1</p>
+            <p className="muted">Versão: google-tasks-kinds-2026.11.03.1</p>
           </section>
         </div>
       )}

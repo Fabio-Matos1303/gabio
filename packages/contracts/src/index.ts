@@ -2,6 +2,35 @@ import { z } from "zod";
 
 export const visibilitySchema = z.enum(["household", "private"]);
 export type Visibility = z.infer<typeof visibilitySchema>;
+export const taskKindSchema = z.enum(["task", "event"]);
+export type TaskKind = z.infer<typeof taskKindSchema>;
+
+function validateTaskKind(
+  item: {
+    kind?: TaskKind | undefined;
+    dueAt: string | null;
+    eventEndsAt?: string | null | undefined;
+  },
+  context: z.RefinementCtx,
+) {
+  if (
+    item.kind === "event" &&
+    (!item.dueAt ||
+      !item.eventEndsAt ||
+      Date.parse(item.eventEndsAt) <= Date.parse(item.dueAt))
+  )
+    context.addIssue({
+      code: "custom",
+      message: "events require a valid start and end",
+      path: ["eventEndsAt"],
+    });
+  if ((item.kind ?? "task") === "task" && item.eventEndsAt != null)
+    context.addIssue({
+      code: "custom",
+      message: "tasks cannot have an event end",
+      path: ["eventEndsAt"],
+    });
+}
 
 export const taskRecurrenceSchema = z.enum([
   "none",
@@ -107,6 +136,8 @@ export const taskTagsSchema = z
 
 const taskPayloadSchema = z
   .object({
+    kind: taskKindSchema.optional(),
+    eventEndsAt: z.string().datetime({ offset: true }).nullable().optional(),
     title: z.string().trim().min(1).max(240),
     dueAt: z.string().datetime({ offset: true }).nullable().default(null),
     assigneeUserId: z.string().uuid().nullable().default(null),
@@ -116,10 +147,13 @@ const taskPayloadSchema = z
     tags: taskTagsSchema.optional(),
   })
   .strict()
-  .superRefine(validateTaskRecurrence);
+  .superRefine(validateTaskRecurrence)
+  .superRefine(validateTaskKind);
 
 const taskMutableFieldsSchema = z
   .object({
+    kind: taskKindSchema.optional(),
+    eventEndsAt: z.string().datetime({ offset: true }).nullable().optional(),
     title: z.string().trim().min(1).max(240),
     dueAt: z.string().datetime({ offset: true }).nullable(),
     assigneeUserId: z.string().uuid().nullable(),
@@ -132,6 +166,7 @@ const taskMutableFieldsSchema = z
 
 const taskCreatePayloadSchema = taskMutableFieldsSchema.superRefine(
   (payload, context) => {
+    validateTaskKind(payload, context);
     validateTaskRecurrence(payload, context);
     if (payload.recurrence !== "none" && payload.dueAt === null)
       context.addIssue({
@@ -191,6 +226,8 @@ export type TaskGatewayCommand = z.infer<typeof taskGatewayCommandSchema>;
 
 export const taskSchema = z
   .object({
+    kind: taskKindSchema.optional(),
+    eventEndsAt: z.string().datetime({ offset: true }).nullable().optional(),
     id: z.string().uuid(),
     householdId: z.string().uuid(),
     ownerUserId: z.string().uuid().nullable(),
@@ -210,6 +247,7 @@ export const taskSchema = z
   })
   .strict()
   .superRefine((task, context) => {
+    validateTaskKind(task, context);
     validateTaskRecurrence(task, context);
     if (task.visibility === "private" && task.ownerUserId === null)
       context.addIssue({

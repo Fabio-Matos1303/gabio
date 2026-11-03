@@ -144,7 +144,11 @@ type Context = {
   userId: string;
   householdId: string;
   tokenCipher: string;
-  links: { calendarId: string; eventId: string }[];
+  links: {
+    calendarId: string;
+    eventId: string;
+    provider?: "google_tasks" | "google_calendar";
+  }[];
   annotations: { listId: string; taskId: string; tags: string[] }[];
 };
 function parseContext(value: unknown): Context | null {
@@ -165,6 +169,11 @@ function parseContext(value: unknown): Context | null {
     const l = record(raw);
     text(l.calendarId);
     text(l.eventId);
+    if (
+      l.provider !== undefined &&
+      !["google_tasks", "google_calendar"].includes(String(l.provider))
+    )
+      throw new Error("invalid read context");
   }
   for (const raw of r.annotations) {
     const a = record(raw);
@@ -429,10 +438,11 @@ export async function readGoogleItems(
             );
             if (!item) continue;
             if (
-              source === "google_calendar" &&
               context!.links.some(
                 (l) =>
-                  l.calendarId === container.id && l.eventId === item.remoteId,
+                  (l.provider ?? "google_calendar") === source &&
+                  l.calendarId === container.id &&
+                  l.eventId === item.remoteId,
               )
             )
               continue;

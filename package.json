@@ -19,7 +19,7 @@
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:calendar && pnpm build",
     "verify:all": "pnpm verify && pnpm test:db",
     "build:production": "pnpm --filter @gabio/web build",
-    "test:calendar": "node --experimental-transform-types --test supabase/functions/_shared/google-calendar.test.ts supabase/functions/_shared/google-reading.test.ts"
+    "test:calendar": "node --experimental-transform-types --test supabase/functions/_shared/google-calendar.test.ts supabase/functions/_shared/google-reading.test.ts supabase/functions/_shared/google-tasks-provider.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

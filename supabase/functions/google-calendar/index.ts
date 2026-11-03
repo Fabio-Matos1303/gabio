@@ -14,6 +14,7 @@ Deno.serve(
     config: {
       enabled: Deno.env.get("GOOGLE_CALENDAR_ENABLED") === "true",
       readingEnabled: Deno.env.get("GOOGLE_READING_ENABLED") === "true",
+      tasksWriteEnabled: Deno.env.get("GOOGLE_TASKS_WRITE_ENABLED") === "true",
       appUrl: Deno.env.get("PUBLIC_APP_URL") ?? "",
       redirectUri:
         Deno.env.get("GOOGLE_CALENDAR_REDIRECT_URI") ??

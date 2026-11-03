@@ -9,6 +9,7 @@ export type CalendarPreferences = {
   reminderMinutes: number | null;
   importUpcoming: boolean;
   readSources?: boolean;
+  writeTasks?: boolean;
 };
 export type StoredTokens = {
   accessToken: string;
@@ -17,6 +18,8 @@ export type StoredTokens = {
   scopes?: string[];
 };
 export type TaskProjection = {
+  kind?: "task" | "event";
+  eventEndsAt?: string | null;
   id: string;
   title: string;
   dueAt: string;
@@ -33,6 +36,7 @@ export class ProviderError extends Error {
       | "unavailable"
       | "invalid_response"
       | "calendar_creation_uncertain"
+      | "tasks_creation_uncertain"
       | "remote_event_deleted"
       | "remote_calendar_deleted",
     readonly retryable = false,
@@ -63,7 +67,12 @@ export function parsePreferences(value: unknown): CalendarPreferences {
     throw new ProviderError("invalid_response");
   if (item.readSources !== undefined && typeof item.readSources !== "boolean")
     throw new ProviderError("invalid_response");
+  if (item.writeTasks !== undefined && typeof item.writeTasks !== "boolean")
+    throw new ProviderError("invalid_response");
   return {
+    ...(item.writeTasks === undefined
+      ? {}
+      : { writeTasks: item.writeTasks as boolean }),
     ...(item.readSources === undefined
       ? {}
       : { readSources: item.readSources as boolean }),
@@ -216,7 +225,12 @@ export function projectTask(
     !task.title.trim() ||
     task.title.length > 240 ||
     !["open", "in_progress", "completed"].includes(task.status) ||
-    !Number.isFinite(Date.parse(task.dueAt))
+    !Number.isFinite(Date.parse(task.dueAt)) ||
+    (task.kind !== undefined && !["task", "event"].includes(task.kind)) ||
+    (task.kind === "event" &&
+      (!task.eventEndsAt ||
+        !Number.isFinite(Date.parse(task.eventEndsAt)) ||
+        Date.parse(task.eventEndsAt) <= Date.parse(task.dueAt)))
   )
     throw new ProviderError("invalid_response");
   const complete = task.status === "completed";
@@ -225,17 +239,20 @@ export function projectTask(
     reminderMinutes !== null &&
     Date.parse(task.dueAt) - reminderMinutes * 60_000 > now;
   return {
-    summary: `${complete ? "Concluída: " : ""}${task.title}`,
-    description: `Prazo da tarefa no Gabio. Gerencie esta tarefa pelo aplicativo: ${new URL("/#tarefas", appUrl)}`,
+    summary: `${complete ? (task.kind === "event" ? "Concluído: " : "Concluída: ") : ""}${task.title}`,
+    description: `${task.kind === "event" ? "Evento" : "Prazo da tarefa"} no Gabio. Gerencie pelo aplicativo: ${new URL("/#tarefas", appUrl)}`,
     start: {
       dateTime: new Date(task.dueAt).toISOString(),
       timeZone: "America/Bahia",
     },
     end: {
-      dateTime: new Date(Date.parse(task.dueAt) + 15 * 60_000).toISOString(),
+      dateTime:
+        task.kind === "event"
+          ? new Date(task.eventEndsAt!).toISOString()
+          : new Date(Date.parse(task.dueAt) + 15 * 60_000).toISOString(),
       timeZone: "America/Bahia",
     },
-    transparency: "transparent",
+    transparency: task.kind === "event" ? "opaque" : "transparent",
     visibility: "private",
     reminders: {
       useDefault: false,
@@ -332,8 +349,13 @@ export class GoogleCalendarProvider {
     const data = await this.json(response);
     if (
       typeof data.scope !== "string" ||
-      !requiredScopes.every((scope) =>
-        String(data.scope).split(" ").includes(scope),
+      !requiredScopes.every(
+        (scope) =>
+          String(data.scope).split(" ").includes(scope) ||
+          (scope === "https://www.googleapis.com/auth/tasks.readonly" &&
+            String(data.scope)
+              .split(" ")
+              .includes("https://www.googleapis.com/auth/tasks")),
       )
     )
       throw new ProviderError("reconnect");

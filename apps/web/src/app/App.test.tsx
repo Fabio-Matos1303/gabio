@@ -140,6 +140,80 @@ async function openTaskDraft() {
 }
 
 describe("App", () => {
+  it("creates an event with explicit start and end in the household timezone", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    render(<App gateway={gateway} />);
+    await openTaskDraft();
+    fireEvent.change(
+      screen
+        .getByRole("dialog", { name: "Nova tarefa" })
+        .querySelector('select[name="kind"]')!,
+      { target: { value: "event" } },
+    );
+    const form = within(screen.getByRole("dialog", { name: "Novo evento" }));
+    fireEvent.change(form.getByLabelText("Título"), {
+      target: { value: "Encontro sintético" },
+    });
+    fireEvent.change(form.getByLabelText("Início do evento"), {
+      target: { value: "2027-01-04T09:00" },
+    });
+    fireEvent.change(form.getByLabelText("Fim do evento"), {
+      target: { value: "2027-01-04T08:00" },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Criar evento" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "um fim posterior",
+    );
+    expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
+    fireEvent.change(form.getByLabelText("Fim do evento"), {
+      target: { value: "2027-01-04T10:30" },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Criar evento" }));
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "create",
+          payload: expect.objectContaining({
+            kind: "event",
+            dueAt: "2027-01-04T12:00:00.000Z",
+            eventEndsAt: "2027-01-04T13:30:00.000Z",
+          }),
+        }),
+      ),
+    );
+  });
+  it("converts an existing task to an event using the versioned update command", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.listTasks = vi.fn().mockResolvedValue([makeTask()]);
+    render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    const form = within(screen.getByRole("dialog", { name: "Editar tarefa" }));
+    expect(form.getByLabelText("Tipo do item")).toHaveValue("task");
+    fireEvent.change(form.getByLabelText("Tipo do item"), {
+      target: { value: "event" },
+    });
+    fireEvent.change(form.getByLabelText("Início do evento"), {
+      target: { value: "2027-01-04T09:00" },
+    });
+    fireEvent.change(form.getByLabelText("Fim do evento"), {
+      target: { value: "2027-01-04T10:30" },
+    });
+    fireEvent.click(form.getByRole("button", { name: "Salvar evento" }));
+    await waitFor(() =>
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "update",
+          payload: expect.objectContaining({
+            kind: "event",
+            expectedVersion: 1,
+            eventEndsAt: "2027-01-04T13:30:00.000Z",
+          }),
+        }),
+      ),
+    );
+  });
   it("rejects inconsistent edited recurrence before enqueuing a command", async () => {
     window.history.replaceState({}, "", "/#tarefas");
     const gateway = gatewayWith();

@@ -6,6 +6,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AppGateway } from "../lib/app-gateway.js";
 import {
   googleAuthorizationSchema,
+  GOOGLE_PROJECTIONS_CHANGED_EVENT,
+  googleExportStatusSchema,
+  type GoogleExportStatus,
   googleCalendarPreferencesSchema,
   googleCalendarStatusSchema,
   googleReadingPermissionSchema,
@@ -17,18 +20,21 @@ type Notice = { kind: "success" | "error"; text: string } | null;
 const labels = {
   connected: "Conectado",
   reconnect: "Reconectar",
-  disconnecting: "Removendo eventos",
+  disconnecting: "Removendo cópias",
   disconnected: "Desconectado",
 };
 
 type CalendarGateway = Pick<
   AppGateway,
+  | "getGoogleExportStatus"
+  | "saveGoogleExportPreferences"
   | "getGoogleReadingPermission"
   | "getGoogleCalendarStatus"
   | "connectGoogleCalendar"
   | "saveGoogleCalendarPreferences"
   | "completeGoogleCalendar"
   | "repairGoogleCalendar"
+  | "repairGoogleTaskLists"
   | "syncGoogleCalendar"
   | "disconnectGoogleCalendar"
 >;
@@ -61,10 +67,19 @@ export function GoogleCalendarSettings({
   const [readSources, setReadSources] = useState(false);
   const [readingState, setReadingState] = useState<ReadingState>("checking");
   const [readingDialogOpen, setReadingDialogOpen] = useState(false);
-  const [importUpcoming, setImportUpcoming] = useState(true);
+  const importUpcoming = false;
+  const [exportStatus, setExportStatus] = useState<GoogleExportStatus | null>(
+    null,
+  );
+  const [destination, setDestination] = useState<
+    "google_tasks" | "google_calendar"
+  >("google_tasks");
+  const [authorizeTasks, setAuthorizeTasks] = useState(false);
+  const [tasksDialogOpen, setTasksDialogOpen] = useState(false);
   const [removeEvents, setRemoveEvents] = useState(false);
   const [abandonCleanup, setAbandonCleanup] = useState(false);
   const [confirmRepair, setConfirmRepair] = useState(false);
+  const [confirmTaskListsRepair, setConfirmTaskListsRepair] = useState(false);
   const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null);
   const lock = useRef(false);
   const live = useRef(false);
@@ -118,13 +133,23 @@ export function GoogleCalendarSettings({
                   : "Não foi possível conectar. Inicie a autorização novamente.",
             });
         }
-        const [rawStatus, permission] = await Promise.all([
+        const [rawStatus, permission, exportSettings] = await Promise.all([
           gateway.getGoogleCalendarStatus(),
           loadReadingPermission(gateway),
+          gateway.getGoogleExportStatus
+            ? gateway
+                .getGoogleExportStatus()
+                .then((v) => googleExportStatusSchema.parse(v))
+                .catch(() => null)
+            : Promise.resolve(null),
         ]);
         const parsed = googleCalendarStatusSchema.parse(rawStatus);
         if (cancelled) return;
         setSnapshot(parsed);
+        if (parsed.connection?.lastSyncedAt || returned.result === "pending")
+          window.dispatchEvent(new Event(GOOGLE_PROJECTIONS_CHANGED_EVENT));
+        setExportStatus(exportSettings);
+        if (exportSettings) setDestination(exportSettings.newTaskDestination);
         setReadingState(permission);
         if (parsed.connection) {
           setHousehold(parsed.connection.exportHousehold);
@@ -142,7 +167,7 @@ export function GoogleCalendarSettings({
             text:
               returned.result === "pending"
                 ? "Não foi possível confirmar a conexão nesta sessão. Entre com a conta Gabio que iniciou a autorização e conecte novamente."
-                : "Não foi possível consultar o Google Agenda. Atualize o estado para tentar novamente.",
+                : "Não foi possível consultar o Google. Atualize o estado para tentar novamente.",
           });
       } finally {
         if (!cancelled) setLoading(false);
@@ -176,14 +201,31 @@ export function GoogleCalendarSettings({
   }
   async function refresh() {
     const preserveDraft = hasLocalEdits;
+    const preserveDestination =
+      exportStatus !== null && destination !== exportStatus.newTaskDestination;
     try {
-      const [rawStatus, permission] = await Promise.all([
+      const [rawStatus, permission, exportSettings] = await Promise.all([
         gateway.getGoogleCalendarStatus(),
         loadReadingPermission(gateway),
+        gateway.getGoogleExportStatus
+          ? gateway
+              .getGoogleExportStatus()
+              .then((v) => googleExportStatusSchema.parse(v))
+              .catch(() => null)
+          : Promise.resolve(null),
       ]);
       const next = googleCalendarStatusSchema.parse(rawStatus);
       if (live.current) {
+        if (
+          next.connection?.lastSyncedAt !==
+            snapshot?.connection?.lastSyncedAt ||
+          next.connection?.status !== snapshot?.connection?.status
+        )
+          window.dispatchEvent(new Event(GOOGLE_PROJECTIONS_CHANGED_EVENT));
         setSnapshot(next);
+        setExportStatus(exportSettings);
+        if (!preserveDestination && exportSettings)
+          setDestination(exportSettings.newTaskDestination);
         setReadingState(permission);
         if (!preserveDraft && next.connection) {
           setHousehold(next.connection.exportHousehold);
@@ -286,14 +328,14 @@ export function GoogleCalendarSettings({
       : connection.status === "reconnect"
         ? "Autorize o Google novamente para retomar os envios."
         : connection?.status === "disconnecting"
-          ? "A conexão será encerrada após a limpeza dos eventos."
+          ? "A conexão será encerrada após a limpeza das cópias."
           : connection?.failedCount
             ? "Algumas atualizações não foram enviadas. Você pode tentar novamente."
             : connection?.pendingCount
               ? "As alterações serão enviadas em segundo plano."
               : connection?.lastSyncedAt
                 ? "Nenhuma atualização pendente nesta consulta."
-                : "O primeiro envio acontece quando houver tarefas com prazo.";
+                : "O envio acontece quando houver tarefas elegíveis para o destino salvo.";
   return (
     <article
       className="settings-card google-calendar-settings integration-settings"
@@ -306,7 +348,7 @@ export function GoogleCalendarSettings({
           </span>
           <div>
             <p className="integration-eyebrow">Integrações</p>
-            <h2 id="google-calendar-heading">Google Agenda e Tasks</h2>
+            <h2 id="google-calendar-heading">Google</h2>
           </div>
         </div>
         <div className="integration-status-row">
@@ -324,8 +366,8 @@ export function GoogleCalendarSettings({
           <button
             type="button"
             className="integration-icon-button"
-            aria-label="Atualizar estado da agenda"
-            title="Atualizar estado da agenda"
+            aria-label="Atualizar estado do Google"
+            title="Atualizar estado do Google"
             disabled={busy || loading}
             onClick={() => void run(refresh)}
           >
@@ -333,7 +375,177 @@ export function GoogleCalendarSettings({
           </button>
         </div>
       </header>
-      {notice && !readingDialogOpen && (
+      {snapshot?.enabled && (
+        <section
+          className="integration-section"
+          aria-label="Destino de novas tarefas"
+        >
+          <h3>Destino de novas tarefas</h3>
+          <label
+            className="integration-field"
+            htmlFor="google-task-destination"
+          >
+            Enviar novas tarefas para
+            <select
+              id="google-task-destination"
+              value={destination}
+              disabled={disabled || !exportStatus || !active}
+              onChange={(e) =>
+                setDestination(
+                  e.target.value as "google_tasks" | "google_calendar",
+                )
+              }
+            >
+              <option value="google_tasks">Google Tarefas</option>
+              <option value="google_calendar">Google Agenda</option>
+            </select>
+          </label>
+          <p className="integration-hint">
+            Vale para tarefas criadas a partir de agora. As tarefas anteriores
+            mantêm o destino original.
+          </p>
+          <p className="integration-hint">
+            O Google Tarefas recebe apenas o dia. Horários e lembretes
+            configurados para o Google Agenda não são enviados.
+          </p>
+          {!exportStatus && (
+            <p role="status">
+              Não foi possível verificar o destino salvo. Atualize o estado.
+            </p>
+          )}
+          {exportStatus && !exportStatus.routingEnabled && (
+            <p role="status">
+              Novo destino em preparação. A integração atual permanece ativa até
+              a liberação.
+            </p>
+          )}
+          {exportStatus && (
+            <p role="status">
+              Destino salvo:{" "}
+              {exportStatus.newTaskDestination === "google_tasks"
+                ? "Google Tarefas"
+                : "Google Agenda"}
+              .{" "}
+              {exportStatus.tasksAuthorized
+                ? "Escrita no Google Tarefas autorizada."
+                : "Google Tarefas aguarda autorização de escrita."}
+            </p>
+          )}
+          <div className="integration-actions">
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                disabled ||
+                !active ||
+                !exportStatus ||
+                destination === exportStatus.newTaskDestination ||
+                !gateway.saveGoogleExportPreferences
+              }
+              onClick={() =>
+                void run(async () => {
+                  if (!exportStatus || !gateway.saveGoogleExportPreferences)
+                    return;
+                  await gateway.saveGoogleExportPreferences({
+                    commandId: crypto.randomUUID(),
+                    expectedVersion: exportStatus.version,
+                    destination,
+                  });
+                  await refresh();
+                  setNotice({
+                    kind: "success",
+                    text: "Destino salvo para novas tarefas.",
+                  });
+                })
+              }
+            >
+              Salvar destino
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={
+                disabled ||
+                !active ||
+                !exportStatus ||
+                exportStatus.tasksAuthorized
+              }
+              onClick={() => {
+                setAuthorizeTasks(false);
+                setTasksDialogOpen(true);
+                setAuthorizationUrl(null);
+              }}
+            >
+              Autorizar Google Tarefas
+            </button>
+          </div>
+          <TaskCardDialog
+            open={tasksDialogOpen}
+            title="Autorizar Google Tarefas"
+            busy={busy}
+            onClose={() => {
+              if (!lock.current) {
+                setTasksDialogOpen(false);
+                setAuthorizationUrl(null);
+              }
+            }}
+          >
+            <div className="task-dialog-fields">
+              <p>
+                O Google concede acesso para criar, editar, organizar e excluir
+                todas as tarefas da sua conta. O Gabio usa esse acesso somente
+                nas listas e tarefas vinculadas à integração.
+              </p>
+              <p>
+                Esta autorização remove as tags locais dos itens Google da
+                conexão anterior. Configurações não salvas não serão aplicadas.
+              </p>
+              <label className="integration-check">
+                <input
+                  type="checkbox"
+                  checked={authorizeTasks}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setAuthorizeTasks(e.target.checked);
+                    setAuthorizationUrl(null);
+                  }}
+                />
+                Autorizo a escrita no Google Tarefas
+              </label>
+              <button
+                type="button"
+                className="primary-button"
+                disabled={disabled || !authorizeTasks}
+                onClick={() =>
+                  void run(async () => {
+                    const result = googleAuthorizationSchema.parse(
+                      await gateway.connectGoogleCalendar({
+                        ...readingPreferences,
+                        importUpcoming: false,
+                        writeTasks: true,
+                      }),
+                    );
+                    setAuthorizationUrl(result.authorizationUrl);
+                  })
+                }
+              >
+                Conectar escrita do Google
+              </button>
+              {notice?.kind === "error" && <p role="alert">{notice.text}</p>}
+              {authorizationUrl && !busy && (
+                <a
+                  className="primary-button"
+                  href={authorizationUrl}
+                  rel="noreferrer"
+                >
+                  Continuar no Google
+                </a>
+              )}
+            </div>
+          </TaskCardDialog>
+        </section>
+      )}
+      {notice && !readingDialogOpen && !tasksDialogOpen && (
         <div
           className={"notice integration-notice " + notice.kind}
           role={notice.kind === "error" ? "alert" : "status"}
@@ -427,14 +639,14 @@ export function GoogleCalendarSettings({
                 <div className="task-dialog-fields">
                   <p>Esta ação inicia uma nova autorização no Google.</p>
                   <p>
-                    Envio ao Google Agenda:{" "}
+                    Exportação para o Google:{" "}
                     {readingPreferences.exportHousehold &&
                     readingPreferences.exportPrivate
                       ? "tarefas da casa e suas tarefas privadas"
                       : readingPreferences.exportPrivate
                         ? "suas tarefas privadas"
                         : "tarefas da casa"}
-                    , com prazo.
+                    .
                   </p>
                   {hasLocalEdits && (
                     <p className="integration-hint">
@@ -512,17 +724,18 @@ export function GoogleCalendarSettings({
               aria-labelledby="google-export-title"
             >
               <div className="integration-section-heading">
-                <h3 id="google-export-title">Enviar ao Google Agenda</h3>
+                <h3 id="google-export-title">Tarefas para exportar</h3>
                 <HelpTooltip label="Sobre o envio de tarefas">
-                  Tarefas com prazo são enviadas para calendários do Gabio na
-                  sua conta Google como lembretes de 15 minutos, sem reservar
-                  horário. Tarefas sem prazo não são enviadas. Alterações no
+                  Os grupos selecionados serão enviados para sua conta Google,
+                  conforme o destino salvo para cada tarefa. Google Tarefas
+                  aceita tarefas sem prazo. No Google Agenda, tarefas com prazo
+                  aparecem como eventos livres de 15 minutos. Alterações no
                   Google não mudam tarefas no Gabio.
                 </HelpTooltip>
               </div>
               <fieldset disabled={disabled}>
                 <legend className="sr-only">
-                  Tarefas para enviar ao Google Agenda
+                  Tarefas para exportar ao Google
                 </legend>
                 <label className="integration-check">
                   <input
@@ -546,50 +759,36 @@ export function GoogleCalendarSettings({
                   />
                   Minhas tarefas privadas
                 </label>
-                <div className="integration-field">
-                  <div className="integration-section-heading">
-                    <label htmlFor="google-reminder">Lembrete de prazo</label>
-                    <HelpTooltip label="Sobre os lembretes">
-                      Os avisos de prazo são enviados pelo Google Agenda,
-                      conforme as notificações habilitadas na sua conta.
-                    </HelpTooltip>
-                  </div>
-                  <select
-                    id="google-reminder"
-                    value={reminder}
-                    onChange={(e) => {
-                      setReminder(e.target.value);
-                      setAuthorizationUrl(null);
-                    }}
-                  >
-                    <option value="none">Sem lembrete</option>
-                    <option value="0">No horário do prazo</option>
-                    <option value="15">15 minutos antes</option>
-                    <option value="60">1 hora antes</option>
-                    <option value="1440">1 dia antes</option>
-                    {!["none", "0", "15", "60", "1440"].includes(reminder) && (
-                      <option value={reminder}>{reminder} minutos antes</option>
-                    )}
-                  </select>
-                </div>
-                {!active && (
-                  <div className="integration-existing">
-                    <label className="integration-check">
-                      <input
-                        type="checkbox"
-                        checked={importUpcoming}
-                        onChange={(e) => {
-                          setImportUpcoming(e.target.checked);
-                          setAuthorizationUrl(null);
-                        }}
-                      />
-                      Incluir pendências a partir de hoje
-                    </label>
-                    <HelpTooltip label="Sobre as tarefas existentes">
-                      Inclui as tarefas abertas que já têm prazo de hoje em
-                      diante. As alterações futuras seguem suas preferências de
-                      envio.
-                    </HelpTooltip>
+                {destination === "google_calendar" && (
+                  <div className="integration-field">
+                    <div className="integration-section-heading">
+                      <label htmlFor="google-reminder">Lembrete de prazo</label>
+                      <HelpTooltip label="Sobre os lembretes">
+                        Os avisos de prazo são enviados pelo Google Agenda,
+                        conforme as notificações habilitadas na sua conta.
+                      </HelpTooltip>
+                    </div>
+                    <select
+                      id="google-reminder"
+                      value={reminder}
+                      onChange={(e) => {
+                        setReminder(e.target.value);
+                        setAuthorizationUrl(null);
+                      }}
+                    >
+                      <option value="none">Sem lembrete</option>
+                      <option value="0">No horário do prazo</option>
+                      <option value="15">15 minutos antes</option>
+                      <option value="60">1 hora antes</option>
+                      <option value="1440">1 dia antes</option>
+                      {!["none", "0", "15", "60", "1440"].includes(
+                        reminder,
+                      ) && (
+                        <option value={reminder}>
+                          {reminder} minutos antes
+                        </option>
+                      )}
+                    </select>
                   </div>
                 )}
               </fieldset>
@@ -615,8 +814,8 @@ export function GoogleCalendarSettings({
                     : active
                       ? "Salvar preferências"
                       : connection?.status === "reconnect"
-                        ? "Reconectar agenda"
-                        : "Conectar agenda"}
+                        ? "Reconectar Google"
+                        : "Conectar Google"}
                 </button>
                 {active && (
                   <span className="integration-hint" role="status">
@@ -626,17 +825,20 @@ export function GoogleCalendarSettings({
               </div>
             </form>
           </div>
-          {authorizationUrl && !busy && !readingDialogOpen && (
-            <div className="integration-authorization" role="status">
-              <a
-                className="primary-button"
-                href={authorizationUrl}
-                rel="noreferrer"
-              >
-                Continuar no Google <span aria-hidden="true">↗</span>
-              </a>
-            </div>
-          )}
+          {authorizationUrl &&
+            !busy &&
+            !readingDialogOpen &&
+            !tasksDialogOpen && (
+              <div className="integration-authorization" role="status">
+                <a
+                  className="primary-button"
+                  href={authorizationUrl}
+                  rel="noreferrer"
+                >
+                  Continuar no Google <span aria-hidden="true">↗</span>
+                </a>
+              </div>
+            )}
           {connection && connection.status !== "disconnected" && (
             <section
               className="integration-sync"
@@ -690,6 +892,45 @@ export function GoogleCalendarSettings({
           <details className="integration-manage">
             <summary>Gerenciar conexão</summary>
             <div className="integration-manage-content">
+              {active &&
+                connection.failedCount > 0 &&
+                gateway.repairGoogleTaskLists && (
+                  <section>
+                    <h3>Recuperar listas do Google Tarefas</h3>
+                    <p>
+                      Sincronizar verifica tarefas cujo envio ficou sem
+                      confirmação, sem repetir a criação. Se a criação de uma
+                      lista ficou sem resposta, esta ação permite uma nova
+                      tentativa. Listas vazias anteriores poderão permanecer no
+                      Google.
+                    </p>
+                    <label className="integration-check">
+                      <input
+                        type="checkbox"
+                        checked={confirmTaskListsRepair}
+                        disabled={busy}
+                        onChange={(e) =>
+                          setConfirmTaskListsRepair(e.target.checked)
+                        }
+                      />
+                      Autorizo recriar listas sem confirmação
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={busy || !confirmTaskListsRepair}
+                      onClick={() =>
+                        void run(async () => {
+                          await gateway.repairGoogleTaskLists!();
+                          setConfirmTaskListsRepair(false);
+                          await refresh();
+                        })
+                      }
+                    >
+                      Recuperar listas
+                    </button>
+                  </section>
+                )}
               {active && connection.failedCount > 0 && (
                 <section>
                   <h3>Recuperar calendário</h3>
@@ -734,8 +975,8 @@ export function GoogleCalendarSettings({
                 <section>
                   <h3>Interromper limpeza</h3>
                   <p>
-                    Interromper mantém os eventos que ainda não foram removidos
-                    e encerra a conexão.
+                    Interromper mantém as cópias que ainda não foram removidas e
+                    encerra a conexão.
                   </p>
                   <label className="integration-check">
                     <input
@@ -744,7 +985,7 @@ export function GoogleCalendarSettings({
                       disabled={busy}
                       onChange={(e) => setAbandonCleanup(e.target.checked)}
                     />
-                    Entendo que eventos pendentes de remoção poderão permanecer
+                    Entendo que cópias pendentes de remoção poderão permanecer
                     no Google
                   </label>
                   <button
@@ -757,7 +998,7 @@ export function GoogleCalendarSettings({
                         if (live.current) {
                           setNotice({
                             kind: "success",
-                            text: "Limpeza interrompida. Revogação solicitada; os eventos restantes serão mantidos.",
+                            text: "Limpeza interrompida. Revogação solicitada; as cópias restantes serão mantidas.",
                           });
                           setAbandonCleanup(false);
                         }
@@ -782,7 +1023,7 @@ export function GoogleCalendarSettings({
                       disabled={busy}
                       onChange={(e) => setRemoveEvents(e.target.checked)}
                     />
-                    Remover os eventos do Gabio antes de desconectar
+                    Remover as cópias do Gabio antes de desconectar
                   </label>
                   <button
                     type="button"
@@ -797,7 +1038,7 @@ export function GoogleCalendarSettings({
                             kind: "success",
                             text: removeEvents
                               ? "Remoção e desconexão solicitadas. Acompanhe o estado."
-                              : "Desconexão solicitada. Os eventos existentes serão mantidos.",
+                              : "Desconexão solicitada. As cópias existentes serão mantidas.",
                           });
                         }
                         await refresh();

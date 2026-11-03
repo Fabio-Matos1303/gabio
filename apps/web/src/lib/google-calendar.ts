@@ -1,4 +1,6 @@
 import { z } from "zod";
+export const GOOGLE_PROJECTIONS_CHANGED_EVENT =
+  "gabio:google-projections-changed";
 
 export const googleCalendarPreferencesSchema = z
   .object({
@@ -20,12 +22,14 @@ export const googleCalendarConnectSchema = z
     reminderMinutes: z.number().int().min(0).max(10080).nullable(),
     importUpcoming: z.boolean(),
     readSources: z.boolean().optional(),
+    writeTasks: z.boolean().optional(),
   })
   .strict()
   .refine((value) => value.exportHousehold || value.exportPrivate);
 export type GoogleCalendarConnect = GoogleCalendarPreferences & {
   importUpcoming: boolean;
   readSources?: boolean;
+  writeTasks?: boolean;
 };
 export const googleCalendarStatusSchema = z
   .object({
@@ -83,4 +87,24 @@ export const googleReadingPermissionSchema = z
   .strict();
 export type GoogleReadingPermission = z.infer<
   typeof googleReadingPermissionSchema
+>;
+
+export const googleExportStatusSchema = z
+  .object({
+    newTaskDestination: z.enum(["google_tasks", "google_calendar"]),
+    version: z.number().int().positive(),
+    tasksAuthorized: z.boolean(),
+    routingEnabled: z.boolean(),
+  })
+  .strict();
+export type GoogleExportStatus = z.infer<typeof googleExportStatusSchema>;
+export const googleExportPreferencesSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    expectedVersion: z.number().int().positive(),
+    destination: z.enum(["google_tasks", "google_calendar"]),
+  })
+  .strict();
+export type GoogleExportPreferences = z.infer<
+  typeof googleExportPreferencesSchema
 >;

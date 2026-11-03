@@ -15,6 +15,34 @@ import {
 } from "./google-calendar-provider.ts";
 import { createCalendarHandler } from "./google-calendar-service.ts";
 import { createCalendarWorker } from "./google-calendar-worker.ts";
+
+test("event kind reserves the explicit interval while tasks remain deadline projections", () => {
+  const task = {
+    id: "90000000-0000-4000-8000-000000000001",
+    title: "Evento sintético",
+    dueAt: "2027-01-04T12:00:00Z",
+    status: "open",
+    version: 1,
+  };
+  const projection = projectTask(
+    { ...task, kind: "event", eventEndsAt: "2027-01-04T13:30:00Z" },
+    null,
+    "https://app.example.test",
+  );
+  assert.equal(projection.transparency, "opaque");
+  assert.equal(projection.end.dateTime, "2027-01-04T13:30:00.000Z");
+  assert.equal(
+    projectTask(task, null, "https://app.example.test").transparency,
+    "transparent",
+  );
+  assert.throws(() =>
+    projectTask(
+      { ...task, kind: "event", eventEndsAt: task.dueAt },
+      null,
+      "https://app.example.test",
+    ),
+  );
+});
 const user = "11111111-1111-4111-8111-111111111111";
 const house = "22222222-2222-4222-8222-222222222222";
 const key = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
@@ -255,6 +283,8 @@ test("connection stores only state hash and encrypted PKCE verifier", async () =
     config,
     authenticate: async () => user,
     rpc: async (name, args) => {
+      if (name === "gc_export_oauth_context")
+        return { scopes: [], taskLists: [] };
       assert.equal(name, "gc_begin_oauth");
       stored = args;
       return null;
@@ -324,6 +354,8 @@ test("valid callback stages encrypted credentials until authenticated completion
           verifier_cipher: cipher,
           preferences: prefs,
         };
+      if (name === "gc_export_oauth_context")
+        return { scopes: [], taskLists: [] };
       if (name === "gc_oauth_target_ids") return [];
       assert.equal(name, "gc_stage_oauth");
       finished = args;
@@ -375,7 +407,7 @@ test("worker does not export a job superseded by a privacy change", async () => 
       throw new Error("must not call");
     }),
     rpc: async (name) =>
-      name === "gc_claim_jobs"
+      name === "gc_claim_jobs_v2"
         ? [
             {
               jobId: user,
@@ -519,7 +551,7 @@ test("worker creates task event and acknowledges the exact lease", async () => {
     workerSecret: secret,
     provider,
     rpc: async (name, args) => {
-      if (name === "gc_claim_jobs") return [job];
+      if (name === "gc_claim_jobs_v2") return [job];
       if (name === "gc_validate_job") return job;
       assert.equal(name, "gc_finish_job");
       acknowledgement = args;
@@ -537,6 +569,7 @@ test("worker creates task event and acknowledges the exact lease", async () => {
   assert.deepEqual(acknowledgement?.result, {
     status: "synced",
     etag: "synthetic-etag",
+    sentVersion: 1,
   });
 });
 test("privacy cleanup deletes managed event before acknowledgement", async () => {
@@ -577,7 +610,7 @@ test("privacy cleanup deletes managed event before acknowledgement", async () =>
       return new Response(null, { status: 204 });
     }),
     rpc: async (name, args) => {
-      if (name === "gc_claim_jobs") return [job];
+      if (name === "gc_claim_jobs_v2") return [job];
       if (name === "gc_validate_job") return job;
       assert.equal(deleted, true);
       assert.deepEqual(args.result, { status: "deleted" });
@@ -630,7 +663,7 @@ test("uncertain calendar creation is never automatically repeated", async () => 
       throw new Error("must not call");
     }),
     rpc: async (name, args) => {
-      if (name === "gc_claim_jobs") return [job];
+      if (name === "gc_claim_jobs_v2") return [job];
       if (name === "gc_validate_job") return job;
       result = args.result;
       return null;
@@ -675,6 +708,8 @@ test("callback for another Google account cannot replace existing calendar acces
           verifier_cipher: cipher,
           preferences: prefs,
         };
+      if (name === "gc_export_oauth_context")
+        return { scopes: [], taskLists: [] };
       if (name === "gc_oauth_target_ids") return ["existing-private-calendar"];
       staged = true;
       return null;
@@ -798,7 +833,7 @@ test("stale credential refresh uses CAS and never writes an event after lease fa
       return Response.json({ access_token: "new-access", expires_in: 3600 });
     }),
     rpc: async (name, args) => {
-      if (name === "gc_claim_jobs") return [job];
+      if (name === "gc_claim_jobs_v2") return [job];
       if (name === "gc_validate_job") return job;
       if (name === "gc_update_token") {
         updateArgs = args;
@@ -891,7 +926,7 @@ test("worker revokes the Google grant after database has scheduled cleanup compl
       return new Response(null, { status: 200 });
     }),
     rpc: async (name, args) => {
-      if (name === "gc_claim_jobs") return [job];
+      if (name === "gc_claim_jobs_v2") return [job];
       if (name === "gc_validate_job") return job;
       assert.equal(revoked, true);
       assert.deepEqual(args.result, { status: "deleted" });
@@ -946,7 +981,7 @@ test("manually deleted Google event rotates through retry after verifying its ca
         : Response.json({ id: "calendar" });
     }),
     rpc: async (name, args) => {
-      if (name === "gc_claim_jobs") return [job];
+      if (name === "gc_claim_jobs_v2") return [job];
       if (name === "gc_validate_job") return job;
       result = args.result;
       return null;
@@ -1007,7 +1042,7 @@ test("manually deleted Google calendar is flagged for explicit repair without bl
       return new Response(null, { status: 404 });
     }),
     rpc: async (name, args) => {
-      if (name === "gc_claim_jobs") return [job];
+      if (name === "gc_claim_jobs_v2") return [job];
       if (name === "gc_validate_job") return job;
       result = args.result;
       return null;
