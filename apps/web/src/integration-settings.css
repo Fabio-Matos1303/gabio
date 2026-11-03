@@ -351,3 +351,20 @@
   background: var(--color-selection);
   color: var(--color-text);
 }
+.integration-settings.google-calendar-settings .integration-reading-status {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+.integration-settings.google-calendar-settings
+  .integration-reading-status.authorized {
+  color: var(--color-text);
+}
+.integration-settings.google-calendar-settings
+  .integration-reading-status.authorized::before {
+  content: "✓ ";
+}
+.integration-settings.google-calendar-settings .task-dialog-fields > p {
+  font-size: 14px;
+  line-height: 1.5;
+}

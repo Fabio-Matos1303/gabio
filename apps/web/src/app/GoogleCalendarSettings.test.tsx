@@ -19,6 +19,9 @@ const connected = {
 };
 function gateway() {
   return {
+    getGoogleReadingPermission: vi
+      .fn()
+      .mockResolvedValue({ state: "not_authorized" }),
     getGoogleCalendarStatus: vi
       .fn()
       .mockResolvedValue({ enabled: true, connection: null }),
@@ -372,13 +375,14 @@ describe("Google Calendar settings", () => {
   it("requires explicit reading consent and keeps scope choices separate", async () => {
     const api = gateway();
     render(<GoogleCalendarSettings gateway={api} />);
-    const connect = await screen.findByRole("button", {
-      name: "Conectar leitura",
-    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Autorizar leitura" }),
+    );
+    const connect = screen.getByRole("button", { name: "Conectar leitura" });
     expect(connect).toBeDisabled();
     fireEvent.click(
       screen.getByRole("checkbox", {
-        name: "Autorizar leitura de Tasks e Agenda",
+        name: "Autorizar leitura de Tasks e Agenda nesta conexão",
       }),
     );
     fireEvent.click(connect);
@@ -388,7 +392,7 @@ describe("Google Calendar settings", () => {
     );
     fireEvent.click(
       screen.getByRole("checkbox", {
-        name: "Autorizar leitura de Tasks e Agenda",
+        name: "Autorizar leitura de Tasks e Agenda nesta conexão",
       }),
     );
     expect(
@@ -430,5 +434,108 @@ describe("Google Calendar settings", () => {
     await screen.findByRole("button", { name: "Reconectar agenda" });
     expect(screen.getByText(/Reconectar remove as tags locais/)).toBeVisible();
     expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+  it("restores the recorded reading permission after remount without a checked toggle", async () => {
+    const api = gateway();
+    api.getGoogleCalendarStatus.mockResolvedValue({
+      enabled: true,
+      connection: connected,
+    });
+    api.getGoogleReadingPermission.mockResolvedValue({ state: "authorized" });
+    const first = render(<GoogleCalendarSettings gateway={api} />);
+    await screen.findByText("Leitura autorizada");
+    expect(
+      screen.queryByRole("checkbox", { name: /Autorizar leitura/ }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Gerenciar leitura" }));
+    const consent = screen.getByRole("checkbox", {
+      name: "Autorizar leitura de Tasks e Agenda nesta conexão",
+    });
+    expect(consent).not.toBeChecked();
+    fireEvent.click(consent);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Fechar autorização de leitura" }),
+    );
+    expect(api.connectGoogleCalendar).not.toHaveBeenCalled();
+    expect(screen.getByText("Leitura autorizada")).toBeVisible();
+    first.unmount();
+    render(<GoogleCalendarSettings gateway={api} />);
+    expect(await screen.findByText("Leitura autorizada")).toBeVisible();
+  });
+  it("does not report granted reading just because an authorization link was prepared", async () => {
+    const api = gateway();
+    render(<GoogleCalendarSettings gateway={api} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Autorizar leitura" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Autorizar leitura de Tasks e Agenda nesta conexão",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Conectar leitura" }));
+    await screen.findByRole("link", { name: "Continuar no Google" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Fechar autorização de leitura" }),
+    );
+    expect(screen.getByText("Leitura não autorizada")).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: "Continuar no Google" }),
+    ).toBeNull();
+  });
+  it("shows verification failure instead of inferring permission from connection status", async () => {
+    const api = gateway();
+    api.getGoogleCalendarStatus.mockResolvedValue({
+      enabled: true,
+      connection: connected,
+    });
+    api.getGoogleReadingPermission.mockRejectedValue(new Error("synthetic"));
+    render(<GoogleCalendarSettings gateway={api} />);
+    expect(
+      await screen.findByText("Não foi possível verificar a leitura"),
+    ).toBeVisible();
+    expect(screen.queryByText("Leitura autorizada")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Verificar leitura" }),
+    ).toBeEnabled();
+  });
+  it("does not apply unsaved private export changes while authorizing reading", async () => {
+    const api = gateway();
+    api.getGoogleCalendarStatus.mockResolvedValue({
+      enabled: true,
+      connection: connected,
+    });
+    api.getGoogleReadingPermission.mockResolvedValue({ state: "authorized" });
+    render(<GoogleCalendarSettings gateway={api} />);
+    await screen.findByText("Leitura autorizada");
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Minhas tarefas privadas" }),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tarefas da casa" }));
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Lembrete de prazo" }),
+      { target: { value: "60" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Gerenciar leitura" }));
+    expect(
+      screen.getByText(
+        "Alterações de envio não salvas não serão aplicadas nesta autorização.",
+      ),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Autorizar leitura de Tasks e Agenda nesta conexão",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Conectar leitura" }));
+    await screen.findByRole("link", { name: "Continuar no Google" });
+    expect(api.connectGoogleCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exportHousehold: true,
+        exportPrivate: false,
+        reminderMinutes: null,
+        readSources: true,
+      }),
+    );
   });
 });

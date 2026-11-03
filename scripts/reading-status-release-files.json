@@ -1,0 +1,18 @@
+[
+  "apps/web/src/app/GoogleCalendarSettings.tsx",
+  "apps/web/src/app/GoogleCalendarSettings.test.tsx",
+  "apps/web/src/lib/google-calendar.ts",
+  "apps/web/src/lib/app-gateway.ts",
+  "apps/web/src/lib/supabase-gateway.ts",
+  "apps/web/src/integration-settings.css",
+  "apps/web/src/app/App.tsx",
+  "apps/web/public/version.json",
+  "scripts/preview/main.tsx",
+  "supabase/functions/_shared/google-calendar-service.ts",
+  "supabase/functions/_shared/google-calendar.test.ts",
+  "supabase/migrations/202611030001_google_reading_permission_status.sql",
+  "supabase/tests/google_reading_permission.test.sql",
+  "docs/architecture/decisions/014-task-views-tags-google-reading.md",
+  "docs/operations/google-reading-permission-status.md",
+  "scripts/reading-status-release-files.json"
+]

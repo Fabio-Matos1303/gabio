@@ -81,6 +81,13 @@ const gateway: AppGateway = {
   acceptInvitation: unavailable,
   inviteMember: unavailable,
   updateProfile: async () => {},
+  getGoogleReadingPermission: async () => ({
+    state:
+      new URLSearchParams(window.location.search).get("readingPreview") ===
+      "authorized"
+        ? "authorized"
+        : "not_authorized",
+  }),
   getGoogleCalendarStatus: async () => ({
     enabled: true,
     connection:

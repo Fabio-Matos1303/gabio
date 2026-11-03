@@ -1,3 +1,4 @@
+import { TaskCardDialog } from "./TaskCardDialog.js";
 import { HelpTooltip } from "./HelpTooltip.js";
 import { TaskIcon } from "./TaskIcon.js";
 import "../integration-settings.css";
@@ -7,6 +8,8 @@ import {
   googleAuthorizationSchema,
   googleCalendarPreferencesSchema,
   googleCalendarStatusSchema,
+  googleReadingPermissionSchema,
+  type GoogleReadingPermission,
   type GoogleCalendarStatus,
 } from "../lib/google-calendar.js";
 
@@ -20,6 +23,7 @@ const labels = {
 
 type CalendarGateway = Pick<
   AppGateway,
+  | "getGoogleReadingPermission"
   | "getGoogleCalendarStatus"
   | "connectGoogleCalendar"
   | "saveGoogleCalendarPreferences"
@@ -28,6 +32,20 @@ type CalendarGateway = Pick<
   | "syncGoogleCalendar"
   | "disconnectGoogleCalendar"
 >;
+type ReadingState =
+  GoogleReadingPermission["state"] | "checking" | "unavailable";
+async function loadReadingPermission(
+  gateway: CalendarGateway,
+): Promise<ReadingState> {
+  try {
+    if (!gateway.getGoogleReadingPermission) return "unavailable";
+    return googleReadingPermissionSchema.parse(
+      await gateway.getGoogleReadingPermission(),
+    ).state;
+  } catch {
+    return "unavailable";
+  }
+}
 export function GoogleCalendarSettings({
   gateway,
 }: {
@@ -41,6 +59,8 @@ export function GoogleCalendarSettings({
   const [privateTasks, setPrivateTasks] = useState(false);
   const [reminder, setReminder] = useState("none");
   const [readSources, setReadSources] = useState(false);
+  const [readingState, setReadingState] = useState<ReadingState>("checking");
+  const [readingDialogOpen, setReadingDialogOpen] = useState(false);
   const [importUpcoming, setImportUpcoming] = useState(true);
   const [removeEvents, setRemoveEvents] = useState(false);
   const [abandonCleanup, setAbandonCleanup] = useState(false);
@@ -98,11 +118,14 @@ export function GoogleCalendarSettings({
                   : "Não foi possível conectar. Inicie a autorização novamente.",
             });
         }
-        const parsed = googleCalendarStatusSchema.parse(
-          await gateway.getGoogleCalendarStatus(),
-        );
+        const [rawStatus, permission] = await Promise.all([
+          gateway.getGoogleCalendarStatus(),
+          loadReadingPermission(gateway),
+        ]);
+        const parsed = googleCalendarStatusSchema.parse(rawStatus);
         if (cancelled) return;
         setSnapshot(parsed);
+        setReadingState(permission);
         if (parsed.connection) {
           setHousehold(parsed.connection.exportHousehold);
           setPrivateTasks(parsed.connection.exportPrivate);
@@ -153,20 +176,28 @@ export function GoogleCalendarSettings({
   }
   async function refresh() {
     const preserveDraft = hasLocalEdits;
-    const next = googleCalendarStatusSchema.parse(
-      await gateway.getGoogleCalendarStatus(),
-    );
-    if (live.current) {
-      setSnapshot(next);
-      if (!preserveDraft && next.connection) {
-        setHousehold(next.connection.exportHousehold);
-        setPrivateTasks(next.connection.exportPrivate);
-        setReminder(
-          next.connection.reminderMinutes === null
-            ? "none"
-            : String(next.connection.reminderMinutes),
-        );
+    try {
+      const [rawStatus, permission] = await Promise.all([
+        gateway.getGoogleCalendarStatus(),
+        loadReadingPermission(gateway),
+      ]);
+      const next = googleCalendarStatusSchema.parse(rawStatus);
+      if (live.current) {
+        setSnapshot(next);
+        setReadingState(permission);
+        if (!preserveDraft && next.connection) {
+          setHousehold(next.connection.exportHousehold);
+          setPrivateTasks(next.connection.exportPrivate);
+          setReminder(
+            next.connection.reminderMinutes === null
+              ? "none"
+              : String(next.connection.reminderMinutes),
+          );
+        }
       }
+    } catch {
+      if (live.current) setReadingState("unavailable");
+      throw new Error("Could not refresh integration status");
     }
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -206,7 +237,6 @@ export function GoogleCalendarSettings({
           await gateway.connectGoogleCalendar({
             ...parsed.data,
             importUpcoming,
-            ...(readSources ? { readSources: true } : {}),
           }),
         );
         if (live.current) setAuthorizationUrl(result.authorizationUrl);
@@ -214,6 +244,14 @@ export function GoogleCalendarSettings({
     });
   }
   const connection = snapshot?.connection;
+  const readingPreferences =
+    connection && connection.status !== "disconnected"
+      ? {
+          exportHousehold: connection.exportHousehold,
+          exportPrivate: connection.exportPrivate,
+          reminderMinutes: connection.reminderMinutes,
+        }
+      : { exportHousehold: true, exportPrivate: false, reminderMinutes: null };
   const active = connection?.status === "connected";
   const disabled =
     busy ||
@@ -295,7 +333,7 @@ export function GoogleCalendarSettings({
           </button>
         </div>
       </header>
-      {notice && (
+      {notice && !readingDialogOpen && (
         <div
           className={"notice integration-notice " + notice.kind}
           role={notice.kind === "error" ? "alert" : "status"}
@@ -325,55 +363,148 @@ export function GoogleCalendarSettings({
                 <h3 id="google-reading-title">Ver no Gabio</h3>
                 <HelpTooltip label="Sobre a leitura Google">
                   Consulte suas tarefas do Google Tasks e eventos das suas
-                  agendas. A leitura é pessoal e não altera itens no Google.
-                  Cada pessoa autoriza sua própria conta. Marcar prepara uma
-                  nova autorização; desmarcar não revoga uma permissão já
-                  concedida.
+                  agendas. A leitura é pessoal e não altera itens no Google. O
+                  status reflete as permissões registradas na última autorização
+                  concluída no Google. Gerenciar leitura inicia uma nova
+                  autorização; fechar o diálogo não revoga a atual.
                 </HelpTooltip>
               </div>
-              <label className="integration-check">
-                <input
-                  type="checkbox"
-                  checked={readSources}
-                  disabled={disabled}
-                  onChange={(e) => {
-                    setReadSources(e.target.checked);
-                    setAuthorizationUrl(null);
-                  }}
-                />
-                Autorizar leitura de Tasks e Agenda
-              </label>
-              {readSources &&
-                connection &&
-                connection.status !== "disconnected" && (
-                  <p className="integration-warning">
-                    Reconectar remove as tags locais dos itens Google da conexão
-                    anterior.
-                  </p>
-                )}
+              <p
+                className={`integration-reading-status ${readingState === "authorized" ? "authorized" : ""}`}
+                role="status"
+              >
+                {
+                  {
+                    authorized: "Leitura autorizada",
+                    not_authorized: "Leitura não autorizada",
+                    reconnect: "Reconectar para ler",
+                    disconnecting: "Desconexão em andamento",
+                    disabled: "Leitura indisponível",
+                    checking: "Verificando leitura…",
+                    unavailable: "Não foi possível verificar a leitura",
+                  }[readingState]
+                }
+              </p>
               <button
                 type="button"
                 className="secondary-button integration-reading-button"
-                disabled={disabled || !readSources}
-                onClick={() =>
-                  void run(async () => {
-                    const result = googleAuthorizationSchema.parse(
-                      await gateway.connectGoogleCalendar({
-                        exportHousehold: household,
-                        exportPrivate: privateTasks,
-                        reminderMinutes:
-                          reminder === "none" ? null : Number(reminder),
-                        importUpcoming: false,
-                        readSources: true,
-                      }),
-                    );
-                    if (live.current)
-                      setAuthorizationUrl(result.authorizationUrl);
-                  })
+                disabled={
+                  disabled ||
+                  readingState === "checking" ||
+                  readingState === "disabled" ||
+                  readingState === "disconnecting"
                 }
+                onClick={() => {
+                  if (readingState === "unavailable") {
+                    void run(refresh);
+                    return;
+                  }
+                  setReadSources(false);
+                  setAuthorizationUrl(null);
+                  setReadingDialogOpen(true);
+                }}
               >
-                Conectar leitura
+                {readingState === "authorized"
+                  ? "Gerenciar leitura"
+                  : readingState === "unavailable"
+                    ? "Verificar leitura"
+                    : readingState === "reconnect"
+                      ? "Reconectar leitura"
+                      : "Autorizar leitura"}
               </button>
+              <TaskCardDialog
+                open={readingDialogOpen}
+                title="Autorização de leitura"
+                busy={busy}
+                onClose={() => {
+                  if (!lock.current) {
+                    setReadingDialogOpen(false);
+                    setReadSources(false);
+                    setAuthorizationUrl(null);
+                  }
+                }}
+              >
+                <div className="task-dialog-fields">
+                  <p>Esta ação inicia uma nova autorização no Google.</p>
+                  <p>
+                    Envio ao Google Agenda:{" "}
+                    {readingPreferences.exportHousehold &&
+                    readingPreferences.exportPrivate
+                      ? "tarefas da casa e suas tarefas privadas"
+                      : readingPreferences.exportPrivate
+                        ? "suas tarefas privadas"
+                        : "tarefas da casa"}
+                    , com prazo.
+                  </p>
+                  {hasLocalEdits && (
+                    <p className="integration-hint">
+                      Alterações de envio não salvas não serão aplicadas nesta
+                      autorização.
+                    </p>
+                  )}
+                  {readingPreferences.exportPrivate && (
+                    <p className="integration-warning">
+                      Não compartilhe o calendário “Gabio - Privado” no Google:
+                      ele contém suas tarefas privadas.
+                    </p>
+                  )}
+                  <label className="integration-check">
+                    <input
+                      type="checkbox"
+                      checked={readSources}
+                      disabled={busy}
+                      onChange={(e) => {
+                        setReadSources(e.target.checked);
+                        setAuthorizationUrl(null);
+                      }}
+                    />
+                    Autorizar leitura de Tasks e Agenda nesta conexão
+                  </label>
+                  {readingDialogOpen &&
+                    connection &&
+                    connection.status !== "disconnected" && (
+                      <p className="integration-warning">
+                        Reconectar remove as tags locais dos itens Google da
+                        conexão anterior.
+                      </p>
+                    )}
+                  {notice && notice.kind === "error" && (
+                    <p role="alert">{notice.text}</p>
+                  )}
+                  <button
+                    type="button"
+                    className="secondary-button integration-reading-button"
+                    disabled={disabled || !readSources}
+                    onClick={() =>
+                      void run(async () => {
+                        const result = googleAuthorizationSchema.parse(
+                          await gateway.connectGoogleCalendar({
+                            exportHousehold: readingPreferences.exportHousehold,
+                            exportPrivate: readingPreferences.exportPrivate,
+                            reminderMinutes: readingPreferences.reminderMinutes,
+                            importUpcoming: false,
+                            readSources: true,
+                          }),
+                        );
+                        if (live.current)
+                          setAuthorizationUrl(result.authorizationUrl);
+                      })
+                    }
+                  >
+                    Conectar leitura
+                  </button>
+
+                  {authorizationUrl && !busy && (
+                    <a
+                      className="primary-button"
+                      href={authorizationUrl}
+                      rel="noreferrer"
+                    >
+                      Continuar no Google <span aria-hidden="true">↗</span>
+                    </a>
+                  )}
+                </div>
+              </TaskCardDialog>
             </section>
             <form
               className="integration-section integration-export"
@@ -495,7 +626,7 @@ export function GoogleCalendarSettings({
               </div>
             </form>
           </div>
-          {authorizationUrl && !busy && (
+          {authorizationUrl && !busy && !readingDialogOpen && (
             <div className="integration-authorization" role="status">
               <a
                 className="primary-button"

@@ -255,6 +255,33 @@ export function createCalendarHandler(deps: CalendarServiceDependencies) {
     } catch {
       return response({ error: "Dados inválidos." }, 400);
     }
+    if (body.action === "reading_status") {
+      if (Object.keys(body).join(",") !== "action")
+        return response({ error: "Dados inválidos." }, 400);
+      if (!ready(deps.config) || !deps.config.readingEnabled)
+        return response({ state: "disabled" });
+      try {
+        const status = object(
+          await deps.rpc("gc_read_permission_status", { actor }),
+        );
+        if (
+          typeof status.state !== "string" ||
+          ![
+            "authorized",
+            "not_authorized",
+            "reconnect",
+            "disconnecting",
+          ].includes(status.state)
+        )
+          throw new Error("invalid reading status");
+        return response({ state: status.state });
+      } catch {
+        return response(
+          { error: "Não foi possível verificar a autorização de leitura." },
+          503,
+        );
+      }
+    }
     if (body.action === "read" || body.action === "external_tags") {
       if (!ready(deps.config))
         return response({ error: "Integração indisponível." }, 503);

@@ -22,3 +22,9 @@ Novas permissões e migrations são preparadas localmente; sua aplicação em pr
 Tags locais de itens externos são privadas e vinculadas à geração da conexão; reconectar limpa as anotações anteriores, com aviso no consentimento. Uma fonte indisponível não impede a gestão de tarefas Gabio. Edição externa, conclusão pelo Gabio, edição de série e blocos de execução ficam fora desta entrega.
 
 Plano funcional: [visualizações de tarefas](../../product/task-views-plan.md).
+
+## Complemento em 2026-11-03: estado de permissão
+
+Consultar a permissão de leitura pelo action reading_status, com resposta contendo apenas um enum derivado de membership, conexão, escopos efetivamente concedidos e existência da credencial. O RPC é service-only. Não carregar tokens, tarefas ou eventos, nem reivindicar lease/cota de leitura para informar o status.
+
+Usar endpoint separado mantém o status legado compatível com clientes antigos de schema estrito. O frontend diferencia indisponibilidade de verificação de ausência de autorização. O consentimento para nova conexão fica em diálogo, separado do status persistente. Autorizar leitura preserva preferências de exportação já salvas; rascunhos não são aplicados por esse fluxo. Em conexão nova, o diálogo apresenta o padrão casa/sem privadas/sem lembrete antes da autorização. A publicação e a migration incremental deste complemento dependem de aprovação humana.

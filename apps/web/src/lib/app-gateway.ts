@@ -8,6 +8,7 @@ import type {
   GoogleCalendarConnect,
   GoogleCalendarPreferences,
   GoogleCalendarStatus,
+  GoogleReadingPermission,
 } from "./google-calendar.js";
 import type {
   FinanceCommandConfirmation,
@@ -143,6 +144,7 @@ export interface AppGateway {
   requestTelegramPairing(): Promise<TelegramPairing>;
   revokeTelegramConnection(): Promise<void>;
   getGoogleCalendarStatus(): Promise<GoogleCalendarStatus>;
+  getGoogleReadingPermission?(): Promise<GoogleReadingPermission>;
   connectGoogleCalendar(
     preferences: GoogleCalendarConnect,
   ): Promise<{ authorizationUrl: string }>;

@@ -69,3 +69,18 @@ export const googleAuthorizationSchema = z
 export const googleCalendarOkSchema = z
   .object({ ok: z.literal(true) })
   .strict();
+
+export const googleReadingPermissionSchema = z
+  .object({
+    state: z.enum([
+      "authorized",
+      "not_authorized",
+      "reconnect",
+      "disconnecting",
+      "disabled",
+    ]),
+  })
+  .strict();
+export type GoogleReadingPermission = z.infer<
+  typeof googleReadingPermissionSchema
+>;

@@ -1,3 +1,4 @@
+import { googleReadingPermissionSchema } from "./google-calendar.js";
 import {
   tagRecordSchema,
   tagMutationSchema,
@@ -350,6 +351,12 @@ export class SupabaseGateway implements AppGateway {
         "Não foi possível acessar o Google Agenda. Tente novamente.",
       );
     return data as unknown;
+  }
+
+  async getGoogleReadingPermission() {
+    return googleReadingPermissionSchema.parse(
+      await this.calendarAction({ action: "reading_status" }),
+    );
   }
 
   async getGoogleCalendarStatus() {

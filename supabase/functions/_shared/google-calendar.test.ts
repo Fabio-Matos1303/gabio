@@ -1026,3 +1026,74 @@ test("manually deleted Google calendar is flagged for explicit repair without bl
   });
   assert.equal(calls, 2);
 });
+
+test("reading permission metadata authenticates, minimizes output and validates states", async () => {
+  const calls: unknown[] = [];
+  const handler = createCalendarHandler({
+    config: { ...config, readingEnabled: true },
+    authenticate: async () => user,
+    rpc: async (name, args) => {
+      calls.push({ name, args });
+      return {
+        state: "authorized",
+        tokenCipher: "synthetic-must-not-leak",
+        scopes: ["synthetic"],
+      };
+    },
+  });
+  const result = await handler(post({ action: "reading_status" }));
+  assert.equal(result.status, 200);
+  assert.deepEqual(await result.json(), { state: "authorized" });
+  assert.equal(result.headers.get("cache-control"), "no-store");
+  assert.deepEqual(calls, [
+    { name: "gc_read_permission_status", args: { actor: user } },
+  ]);
+  assert.equal(
+    (await handler(post({ action: "reading_status", actor: house }))).status,
+    400,
+  );
+  assert.equal(calls.length, 1);
+  const denied = createCalendarHandler({
+    config: { ...config, readingEnabled: true },
+    authenticate: async () => null,
+    rpc: async () => {
+      throw Error("unexpected");
+    },
+  });
+  assert.equal((await denied(post({ action: "reading_status" }))).status, 401);
+  for (const state of ["invalid", ["authorized"], null]) {
+    const invalid = createCalendarHandler({
+      config: { ...config, readingEnabled: true },
+      authenticate: async () => user,
+      rpc: async () => ({ state }),
+    });
+    assert.equal(
+      (await invalid(post({ action: "reading_status" }))).status,
+      503,
+    );
+  }
+});
+test("reading permission metadata returns disabled without loading private state", async () => {
+  const disabled = createCalendarHandler({
+    config: { ...config, readingEnabled: false },
+    authenticate: async () => user,
+    rpc: async () => {
+      throw Error("unexpected");
+    },
+  });
+  assert.deepEqual(
+    await (await disabled(post({ action: "reading_status" }))).json(),
+    { state: "disabled" },
+  );
+  for (const state of ["not_authorized", "reconnect", "disconnecting"]) {
+    const handler = createCalendarHandler({
+      config: { ...config, readingEnabled: true },
+      authenticate: async () => user,
+      rpc: async () => ({ state }),
+    });
+    assert.deepEqual(
+      await (await handler(post({ action: "reading_status" }))).json(),
+      { state },
+    );
+  }
+});
