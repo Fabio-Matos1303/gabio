@@ -803,9 +803,11 @@ describe("App", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Configurações" }),
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Conectar Telegram" }),
-    );
+    const connect = await screen.findByRole("button", {
+      name: "Conectar Telegram",
+    });
+    await waitFor(() => expect(connect).toBeEnabled());
+    fireEvent.click(connect);
     await waitFor(() =>
       expect(gateway.requestTelegramPairing).toHaveBeenCalled(),
     );

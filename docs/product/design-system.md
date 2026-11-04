@@ -78,6 +78,20 @@ Usar espaçamentos de 4, 8, 12, 16, 20, 24 e 32 px. No mobile, começar com marg
 - Respeitar `prefers-reduced-motion` e, onde suportado, `prefers-reduced-transparency`. Não depender de animação ou transparência para comunicar estado.
 - Permitir ampliação de texto e quebra de conteúdo sem corte de rótulos ou perda de ações.
 
+## Movimento
+
+O [plano de movimento](motion-design-plan.md) detalha a evolução inspirada no iOS. Os tokens compartilhados ficam em `apps/web/src/motion.css`: pressão de 110 ms, feedback de 180 ms, conteúdo de 220 ms, seleção de 280 ms, entrada de folha de 320 ms e saída de 180 ms. São valores do Gabio, sujeitos à calibração visual.
+
+- Responder à pressão com compressão discreta e recuperação suave, sem mudar o layout. Reservar maior expressão para controles flutuantes e para o indicador da ilha.
+- A seleção da ilha se desloca entre destinos; ícones e rótulos mantêm suas posições. Preservar rótulos, sublinhado da seleção e `aria-current`, incluindo texto ampliado.
+- Trocas de página mantêm cabeçalho e ilha estáveis. Animar apenas a entrada do conteúdo, sem remontar formulários ou duplicar telas para produzir uma saída.
+- Diálogos entram como folha inferior no mobile e como superfície central a partir de 640 px. Cancelar e fechar podem ter saída breve; encerramentos controlados por operação, rota, sessão ou invalidação são imediatos.
+- Preferir transições em `transform`, `translate`, `scale` e `opacity`, sem animar blur continuamente ou adicionar cascatas de cards.
+- Mudanças rápidas cancelam movimentos anteriores. Nenhum efeito dispara comandos, retém conteúdo privado desmontado ou condiciona a disponibilidade de uma mensagem.
+- Movimento reduzido remove animações CSS e JavaScript, inclusive quando a preferência muda durante o uso. Transparência reduzida continua usando superfície opaca.
+
+Esta implementação inicial está disponível localmente; sua inclusão neste documento não representa publicação em produção. A validação está registrada em [movimento da interface](../operations/motion-ui-validation.md).
+
 ## Critérios de aceite para desenvolvimento
 
 O [plano de adequação da tela inicial](home-redesign-plan.md) detalha a primeira aplicação deste padrão ao hub existente.

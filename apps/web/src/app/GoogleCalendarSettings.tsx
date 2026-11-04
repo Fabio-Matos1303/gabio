@@ -484,10 +484,8 @@ export function GoogleCalendarSettings({
             title="Autorizar Google Tarefas"
             busy={busy}
             onClose={() => {
-              if (!lock.current) {
-                setTasksDialogOpen(false);
-                setAuthorizationUrl(null);
-              }
+              setTasksDialogOpen(false);
+              setAuthorizationUrl(null);
             }}
           >
             <div className="task-dialog-fields">
@@ -629,11 +627,9 @@ export function GoogleCalendarSettings({
                 title="Autorização de leitura"
                 busy={busy}
                 onClose={() => {
-                  if (!lock.current) {
-                    setReadingDialogOpen(false);
-                    setReadSources(false);
-                    setAuthorizationUrl(null);
-                  }
+                  setReadingDialogOpen(false);
+                  setReadSources(false);
+                  setAuthorizationUrl(null);
                 }}
               >
                 <div className="task-dialog-fields">

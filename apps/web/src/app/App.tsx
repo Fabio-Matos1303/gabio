@@ -1,5 +1,5 @@
 import { TaskIcon } from "./TaskIcon.js";
-import { TaskCardDialog } from "./TaskCardDialog.js";
+import { DialogCloseButton, TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskViews } from "./TaskViews.js";
 import { TaskTagFields, parseTagInput } from "./TaskTagFields.js";
 import type { TagRecord } from "../lib/task-views.js";
@@ -1227,16 +1227,14 @@ function TaskPanel({
                   {editingKind === "event" ? "Salvar evento" : "Salvar tarefa"}
                 </button>
               )}
-              <button
-                type="button"
+              <DialogCloseButton
                 className="secondary-button"
                 disabled={savingTask}
-                onClick={() => setEditingTask(null)}
               >
                 {editingTask.status === "completed"
                   ? "Fechar cartão"
                   : "Cancelar edição"}
-              </button>
+              </DialogCloseButton>
             </footer>
           </form>
         </TaskCardDialog>
@@ -1266,9 +1264,7 @@ function TaskPanel({
         title={creationTitle}
         setTitle={setCreationTitle}
         resetKey={creationSequence}
-        onClose={() => {
-          if (!commandInFlight.current) setCreationOpen(false);
-        }}
+        onClose={() => setCreationOpen(false)}
         onSubmit={createTask}
         household={household}
         catalog={catalog}
@@ -1420,7 +1416,7 @@ function Dashboard({
         </div>
       </header>
       {visitedPages.has("home") && (
-        <div hidden={page !== "home"}>
+        <div className="home-page" hidden={page !== "home"}>
           <section className="home-intro" id="inicio">
             <div>
               <h1>Início</h1>
@@ -1495,7 +1491,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: google-tasks-kinds-2026.11.03.1</p>
+            <p className="muted">Versão: ios-motion-2026.11.03.1</p>
           </section>
         </div>
       )}

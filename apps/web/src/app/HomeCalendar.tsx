@@ -1,5 +1,6 @@
 import type { Task } from "@gabio/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useContentMotion } from "./use-content-motion.js";
 
 import type {
   AppGateway,
@@ -179,6 +180,8 @@ export function HomeCalendar({ gateway }: { gateway: AppGateway }) {
     () => new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1),
     [visibleMonth],
   );
+  const calendarRef = useRef<HTMLDivElement>(null);
+  useContentMotion(calendarRef, dateKey(rangeStart), "horizontal");
   const rangeEnd = useMemo(
     () =>
       new Date(
@@ -304,7 +307,7 @@ export function HomeCalendar({ gateway }: { gateway: AppGateway }) {
                   ),
                 )}
               </div>
-              <div className="calendar-grid">
+              <div className="calendar-grid" ref={calendarRef}>
                 {cells.map((date) => {
                   const key = dateKey(date);
                   const dayItems = items.filter((item) => item.date === key);

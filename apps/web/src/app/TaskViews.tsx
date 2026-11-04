@@ -1,5 +1,6 @@
 import { TaskIcon } from "./TaskIcon.js";
-import { TaskCardDialog } from "./TaskCardDialog.js";
+import { useContentMotion } from "./use-content-motion.js";
+import { DialogCloseButton, TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskTagFields } from "./TaskTagFields.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { GOOGLE_PROJECTIONS_CHANGED_EVENT } from "../lib/google-calendar.js";
@@ -73,6 +74,12 @@ export function TaskViews({
   );
   const readMonth = useRef(month);
   const [day, setDay] = useState(() => householdDate(new Date()));
+  const contentRef = useRef<HTMLDivElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const dayRef = useRef<HTMLElement>(null);
+  useContentMotion(contentRef, view);
+  useContentMotion(calendarRef, month, "horizontal");
+  useContentMotion(dayRef, day);
   const [externalEditor, setExternalEditor] = useState<
     (ViewItem & { generation: string }) | null
   >(null);
@@ -759,13 +766,9 @@ export function TaskViews({
             >
               Limpar filtros
             </button>
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => setFiltersOpen(false)}
-            >
+            <DialogCloseButton className="primary-button">
               Mostrar {visibleCount} resultado(s)
-            </button>
+            </DialogCloseButton>
           </footer>
         </TaskCardDialog>
         <TaskCardDialog
@@ -801,9 +804,7 @@ export function TaskViews({
                   : "A ordem é aplicada dentro de cada coluna."
                 : "A ordem é aplicada à lista do dia, sem mudar as datas da grade."}
             </small>
-            <button type="button" onClick={() => setSortOpen(false)}>
-              Concluído
-            </button>
+            <DialogCloseButton>Concluído</DialogCloseButton>
           </div>
         </TaskCardDialog>
         <div className="task-results">
@@ -1042,245 +1043,247 @@ export function TaskViews({
               />
               {externalNotice && <p role="alert">{externalNotice}</p>}
               <button disabled={externalBusy}>Salvar tags locais</button>
-              <button
-                type="button"
-                disabled={externalBusy}
-                onClick={() => setExternalEditor(null)}
-              >
+              <DialogCloseButton disabled={externalBusy}>
                 Cancelar
-              </button>
+              </DialogCloseButton>
             </form>
           </div>
         </TaskCardDialog>
       )}
-      {view === "kanban" ? (
-        <div
-          className="task-board"
-          role="region"
-          aria-label="Quadro de tarefas"
-        >
-          {[
-            ["open", "A fazer"],
-            ["in_progress", "Em andamento"],
-            ["completed", "Concluídas"],
-          ].map(([status, title]) => {
-            const items = selected.filter((i) => i.status === status);
-            if (status === "completed" && filters.sort === "due_asc") {
-              const completionTime = (item: ViewItem) =>
-                item.task?.completedAt
-                  ? Date.parse(item.task.completedAt)
-                  : Number.NEGATIVE_INFINITY;
-              items.sort((a, b) => {
-                const aTime = completionTime(a);
-                const bTime = completionTime(b);
-                return aTime === bTime ? 0 : aTime > bTime ? -1 : 1;
-              });
-            }
-            return (
-              <section
-                className={`task-column ${status}`}
-                key={status}
-                aria-label={title}
-              >
-                <header className="task-column-header">
-                  <h3>{title}</h3>
-                  <span
-                    aria-label={`${items.length} ${items.length === 1 ? "tarefa" : "tarefas"} em ${title}`}
-                  >
-                    {items.length}
-                  </span>
-                </header>
-                <div className="task-column-cards">
-                  {items.length ? (
-                    items.map((item) => renderItem(item))
-                  ) : (
-                    <p className="task-column-empty">
-                      {activeFilterCount
-                        ? "Nenhuma tarefa corresponde aos filtros."
-                        : "Nenhuma tarefa aqui."}
-                    </p>
+      <div ref={contentRef} className="task-view-content">
+        {view === "kanban" ? (
+          <div
+            className="task-board"
+            role="region"
+            aria-label="Quadro de tarefas"
+          >
+            {[
+              ["open", "A fazer"],
+              ["in_progress", "Em andamento"],
+              ["completed", "Concluídas"],
+            ].map(([status, title]) => {
+              const items = selected.filter((i) => i.status === status);
+              if (status === "completed" && filters.sort === "due_asc") {
+                const completionTime = (item: ViewItem) =>
+                  item.task?.completedAt
+                    ? Date.parse(item.task.completedAt)
+                    : Number.NEGATIVE_INFINITY;
+                items.sort((a, b) => {
+                  const aTime = completionTime(a);
+                  const bTime = completionTime(b);
+                  return aTime === bTime ? 0 : aTime > bTime ? -1 : 1;
+                });
+              }
+              return (
+                <section
+                  className={`task-column ${status}`}
+                  key={status}
+                  aria-label={title}
+                >
+                  <header className="task-column-header">
+                    <h3>{title}</h3>
+                    <span
+                      aria-label={`${items.length} ${items.length === 1 ? "tarefa" : "tarefas"} em ${title}`}
+                    >
+                      {items.length}
+                    </span>
+                  </header>
+                  <div className="task-column-cards">
+                    {items.length ? (
+                      items.map((item) => renderItem(item))
+                    ) : (
+                      <p className="task-column-empty">
+                        {activeFilterCount
+                          ? "Nenhuma tarefa corresponde aos filtros."
+                          : "Nenhuma tarefa aqui."}
+                      </p>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <section
+            className="task-calendar glass-surface"
+            aria-label="Calendário de tarefas"
+          >
+            <header className="calendar-toolbar">
+              <h3>
+                {labelDate(month + "-01", { month: "long", year: "numeric" })}
+              </h3>
+              <div className="calendar-navigation">
+                <button
+                  type="button"
+                  aria-label="Mês anterior"
+                  onClick={() => moveMonth(-1)}
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const today = householdDate(new Date());
+                    setMonth(today.slice(0, 7));
+                    setDay(today);
+                  }}
+                >
+                  Hoje
+                </button>
+                <button
+                  type="button"
+                  aria-label="Próximo mês"
+                  onClick={() => moveMonth(1)}
+                >
+                  →
+                </button>
+              </div>
+            </header>
+            <div className="calendar-legend" aria-label="Legenda do calendário">
+              <span>○ Tarefa</span>
+              <span>✓ Concluída</span>
+              <span>▪ Compromisso</span>
+              <span>Horário de Brasília</span>
+            </div>
+            <div className="task-calendar-layout">
+              <div>
+                <div className="calendar-weekdays" aria-hidden="true">
+                  {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map(
+                    (d) => (
+                      <span key={d}>{d}</span>
+                    ),
                   )}
                 </div>
-              </section>
-            );
-          })}
-        </div>
-      ) : (
-        <section
-          className="task-calendar glass-surface"
-          aria-label="Calendário de tarefas"
-        >
-          <header className="calendar-toolbar">
-            <h3>
-              {labelDate(month + "-01", { month: "long", year: "numeric" })}
-            </h3>
-            <div className="calendar-navigation">
-              <button
-                type="button"
-                aria-label="Mês anterior"
-                onClick={() => moveMonth(-1)}
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const today = householdDate(new Date());
-                  setMonth(today.slice(0, 7));
-                  setDay(today);
-                }}
-              >
-                Hoje
-              </button>
-              <button
-                type="button"
-                aria-label="Próximo mês"
-                onClick={() => moveMonth(1)}
-              >
-                →
-              </button>
-            </div>
-          </header>
-          <div className="calendar-legend" aria-label="Legenda do calendário">
-            <span>○ Tarefa</span>
-            <span>✓ Concluída</span>
-            <span>▪ Compromisso</span>
-            <span>Horário de Brasília</span>
-          </div>
-          <div className="task-calendar-layout">
-            <div>
-              <div className="calendar-weekdays" aria-hidden="true">
-                {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
-                  <span key={d}>{d}</span>
-                ))}
-              </div>
-              <div className="calendar-grid">
-                {cells.map((date) => {
-                  const items = selected.filter((i) => itemOnDay(i, date));
-                  return (
-                    <div
-                      className={`calendar-day${date.slice(0, 7) !== month ? " outside" : ""}${date === day ? " selected" : ""}`}
-                      key={date}
-                    >
-                      <button
-                        type="button"
-                        className="calendar-day-select"
-                        aria-pressed={date === day}
-                        aria-current={
-                          date === householdDate(new Date())
-                            ? "date"
-                            : undefined
-                        }
-                        aria-label={`${labelDate(date, { dateStyle: "full" })}, ${items.length} itens`}
-                        onClick={() => {
-                          setDay(date);
-                          if (date.slice(0, 7) !== month)
-                            setMonth(date.slice(0, 7));
-                        }}
+                <div className="calendar-grid" ref={calendarRef}>
+                  {cells.map((date) => {
+                    const items = selected.filter((i) => itemOnDay(i, date));
+                    return (
+                      <div
+                        className={`calendar-day${date.slice(0, 7) !== month ? " outside" : ""}${date === day ? " selected" : ""}`}
+                        key={date}
                       >
-                        <span className="calendar-date-number">
-                          {Number(date.slice(-2))}
-                        </span>
-                        <span className="task-day-count">
-                          {items.length
-                            ? `${items.length} ${items.length === 1 ? "item" : "itens"}`
-                            : ""}
-                        </span>
-                      </button>
-                      <div className="task-day-titles">
-                        {items.slice(0, 2).map((item) => (
-                          <button
-                            type="button"
-                            key={item.id}
-                            className={`calendar-event ${item.source}`}
-                            disabled={
-                              !!item.task && canOpenTask?.(item.task) === false
-                            }
-                            onClick={() => {
-                              if (item.task && onOpenTask)
-                                onOpenTask(item.task);
-                              else if (item.external && reading?.generation)
-                                setExternalCard({
-                                  ...item,
-                                  generation: reading.generation,
-                                });
-                              else setDay(date);
-                            }}
-                            title={item.title}
-                          >
-                            <span
-                              aria-hidden="true"
-                              className="calendar-event-mark"
+                        <button
+                          type="button"
+                          className="calendar-day-select"
+                          aria-pressed={date === day}
+                          aria-current={
+                            date === householdDate(new Date())
+                              ? "date"
+                              : undefined
+                          }
+                          aria-label={`${labelDate(date, { dateStyle: "full" })}, ${items.length} itens`}
+                          onClick={() => {
+                            setDay(date);
+                            if (date.slice(0, 7) !== month)
+                              setMonth(date.slice(0, 7));
+                          }}
+                        >
+                          <span className="calendar-date-number">
+                            {Number(date.slice(-2))}
+                          </span>
+                          <span className="task-day-count">
+                            {items.length
+                              ? `${items.length} ${items.length === 1 ? "item" : "itens"}`
+                              : ""}
+                          </span>
+                        </button>
+                        <div className="task-day-titles">
+                          {items.slice(0, 2).map((item) => (
+                            <button
+                              type="button"
+                              key={item.id}
+                              className={`calendar-event ${item.source}`}
+                              disabled={
+                                !!item.task &&
+                                canOpenTask?.(item.task) === false
+                              }
+                              onClick={() => {
+                                if (item.task && onOpenTask)
+                                  onOpenTask(item.task);
+                                else if (item.external && reading?.generation)
+                                  setExternalCard({
+                                    ...item,
+                                    generation: reading.generation,
+                                  });
+                                else setDay(date);
+                              }}
+                              title={item.title}
                             >
-                              {item.status === "event"
-                                ? "▪"
-                                : item.status === "completed"
-                                  ? "✓"
-                                  : "○"}
-                            </span>
-                            {item.startsAt && (
-                              <time>
-                                {new Intl.DateTimeFormat("pt-BR", {
-                                  timeZone: "America/Bahia",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }).format(new Date(item.startsAt))}{" "}
-                              </time>
-                            )}
-                            {item.title}
-                          </button>
-                        ))}
-                        {items.length > 2 && (
-                          <button
-                            type="button"
-                            className="calendar-more"
-                            onClick={() => setDay(date)}
-                          >
-                            +{items.length - 2} mais
-                          </button>
-                        )}
+                              <span
+                                aria-hidden="true"
+                                className="calendar-event-mark"
+                              >
+                                {item.status === "event"
+                                  ? "▪"
+                                  : item.status === "completed"
+                                    ? "✓"
+                                    : "○"}
+                              </span>
+                              {item.startsAt && (
+                                <time>
+                                  {new Intl.DateTimeFormat("pt-BR", {
+                                    timeZone: "America/Bahia",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  }).format(new Date(item.startsAt))}{" "}
+                                </time>
+                              )}
+                              {item.title}
+                            </button>
+                          ))}
+                          {items.length > 2 && (
+                            <button
+                              type="button"
+                              className="calendar-more"
+                              onClick={() => setDay(date)}
+                            >
+                              +{items.length - 2} mais
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-            <section
-              className="task-day-list"
-              aria-label="Itens do dia selecionado"
-            >
-              <h3>
-                {labelDate(day, {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                })}
-              </h3>
-              <p className="task-day-total">
-                {dayItems.length} {dayItems.length === 1 ? "item" : "itens"}
-              </p>
-              {dayItems.length ? (
-                dayItems.map((item) => renderItem(item))
-              ) : (
-                <p>
-                  Nenhum item{" "}
-                  {activeFilterCount
-                    ? "corresponde aos filtros neste dia."
-                    : "neste dia."}
+              <section
+                className="task-day-list"
+                ref={dayRef}
+                aria-label="Itens do dia selecionado"
+              >
+                <h3>
+                  {labelDate(day, {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
+                  })}
+                </h3>
+                <p className="task-day-total">
+                  {dayItems.length} {dayItems.length === 1 ? "item" : "itens"}
                 </p>
+                {dayItems.length ? (
+                  dayItems.map((item) => renderItem(item))
+                ) : (
+                  <p>
+                    Nenhum item{" "}
+                    {activeFilterCount
+                      ? "corresponde aos filtros neste dia."
+                      : "neste dia."}
+                  </p>
+                )}
+              </section>
+            </div>
+            <details className="task-no-date">
+              <summary>Sem data ou prazo ({noDate.length})</summary>
+              {noDate.length ? (
+                noDate.map((item) => renderItem(item))
+              ) : (
+                <p>Nenhuma tarefa sem data corresponde à seleção.</p>
               )}
-            </section>
-          </div>
-          <details className="task-no-date">
-            <summary>Sem data ou prazo ({noDate.length})</summary>
-            {noDate.length ? (
-              noDate.map((item) => renderItem(item))
-            ) : (
-              <p>Nenhuma tarefa sem data corresponde à seleção.</p>
-            )}
-          </details>
-        </section>
-      )}
+            </details>
+          </section>
+        )}
+      </div>
       {gateway.executeTagCommand && (
         <TagManager
           open={tagsOpen}

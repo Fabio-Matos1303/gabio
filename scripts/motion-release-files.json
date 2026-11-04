@@ -1,0 +1,22 @@
+[
+  "apps/web/public/version.json",
+  "apps/web/src/app/App.test.tsx",
+  "apps/web/src/app/App.tsx",
+  "apps/web/src/app/BottomNavigation.tsx",
+  "apps/web/src/app/GoogleCalendarSettings.tsx",
+  "apps/web/src/app/HomeCalendar.tsx",
+  "apps/web/src/app/TaskCardDialog.test.tsx",
+  "apps/web/src/app/TaskCardDialog.tsx",
+  "apps/web/src/app/TaskCreationDialog.tsx",
+  "apps/web/src/app/TaskViews.tsx",
+  "apps/web/src/app/use-content-motion.test.tsx",
+  "apps/web/src/app/use-content-motion.ts",
+  "apps/web/src/app/use-dialog-motion.ts",
+  "apps/web/src/motion.css",
+  "apps/web/src/styles.css",
+  "apps/web/src/task-creation.css",
+  "docs/product/design-system.md",
+  "docs/product/motion-design-plan.md",
+  "docs/operations/motion-ui-validation.md",
+  "scripts/motion-release-files.json"
+]

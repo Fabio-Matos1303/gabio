@@ -1,3 +1,5 @@
+@import "./motion.css";
+
 :root {
   --color-background: #f4f1e8;
   --color-text: #18342a;

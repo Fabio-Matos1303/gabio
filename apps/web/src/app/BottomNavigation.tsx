@@ -39,43 +39,55 @@ export function BottomNavigation({
   page: NavigationPage;
   taskMvp: boolean;
 }) {
+  const items = destinations.filter(
+    (item) => !taskMvp || item.page === "tasks" || item.page === "settings",
+  );
+  const activeIndex = items.findIndex((item) => item.page === page);
   return (
-    <nav className="bottom-nav glass-surface" aria-label="Navegação principal">
-      {destinations
-        .filter(
-          (item) =>
-            !taskMvp || item.page === "tasks" || item.page === "settings",
-        )
-        .map((item) => (
-          <a
-            key={item.page}
-            href={item.href}
-            aria-current={page === item.page ? "page" : undefined}
+    <nav
+      className="bottom-nav glass-surface"
+      aria-label="Navegação principal"
+      style={
+        {
+          "--navigation-count": items.length,
+          "--navigation-index": activeIndex,
+        } as CSSProperties
+      }
+    >
+      {activeIndex >= 0 && (
+        <i className="navigation-selection" aria-hidden="true" />
+      )}
+      {items.map((item) => (
+        <a
+          key={item.page}
+          href={item.href}
+          aria-current={page === item.page ? "page" : undefined}
+        >
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
           >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path
-                d={item.path}
-                fill={
-                  item.page === "home" && page === "home"
-                    ? "currentColor"
-                    : "none"
-                }
-              />
-            </svg>
-            <span>{item.label}</span>
-          </a>
-        ))}
+            <path
+              d={item.path}
+              fill={
+                item.page === "home" && page === "home"
+                  ? "currentColor"
+                  : "none"
+              }
+            />
+          </svg>
+          <span>{item.label}</span>
+        </a>
+      ))}
     </nav>
   );
 }
+import type { CSSProperties } from "react";

@@ -1,4 +1,4 @@
-import { TaskCardDialog } from "./TaskCardDialog.js";
+import { DialogCloseButton, TaskCardDialog } from "./TaskCardDialog.js";
 import type { TagRecord } from "../lib/task-views.js";
 import { TaskTagFields } from "./TaskTagFields.js";
 import { useEffect, useState } from "react";
@@ -98,14 +98,9 @@ export function TaskCreationDialog({
           </label>
         </div>
         <footer className="task-dialog-actions">
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={busy}
-            onClick={onClose}
-          >
+          <DialogCloseButton className="secondary-button" disabled={busy}>
             Cancelar
-          </button>
+          </DialogCloseButton>
           <button className="primary-button" disabled={busy}>
             {busy
               ? "Enviando…"

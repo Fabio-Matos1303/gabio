@@ -6,8 +6,13 @@
   letter-spacing: -0.04em;
 }
 .tasks-section .section-heading {
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
+}
+.tasks-section .section-heading .task-new-button {
+  width: auto;
+  flex-shrink: 0;
 }
 .tasks-section .section-heading .secondary-button {
   min-height: 44px;

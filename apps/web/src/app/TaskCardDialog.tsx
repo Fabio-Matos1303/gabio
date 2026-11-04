@@ -1,4 +1,21 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useId,
+  useRef,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
+import { useDialogMotion } from "./use-dialog-motion.js";
+
+const DialogCloseContext = createContext<(() => void) | undefined>(undefined);
+
+export function DialogCloseButton(
+  props: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "onClick" | "type">,
+) {
+  const close = useContext(DialogCloseContext);
+  return <button {...props} type="button" onClick={close} />;
+}
 
 export function TaskCardDialog({
   open,
@@ -17,24 +34,7 @@ export function TaskCardDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog || !open) return;
-    const trigger = document.activeElement as HTMLElement | null;
-    if (!dialog.open) dialog.showModal();
-    dialog
-      .querySelector<HTMLInputElement>(
-        'input[name="title"]:not(:disabled), input[name="search"]:not(:disabled)',
-      )
-      ?.focus();
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      dialog.close();
-      document.body.style.overflow = previous;
-      if (trigger?.isConnected) trigger.focus();
-    };
-  }, [open]);
+  const requestClose = useDialogMotion(ref, open, busy, onClose);
   return (
     <dialog
       ref={ref}
@@ -64,7 +64,7 @@ export function TaskCardDialog({
       }}
       onCancel={(e) => {
         e.preventDefault();
-        if (!busy) onClose();
+        requestClose();
       }}
     >
       <header className="task-dialog-heading">
@@ -73,12 +73,14 @@ export function TaskCardDialog({
           type="button"
           aria-label={`Fechar ${title.toLocaleLowerCase("pt-BR")}`}
           disabled={busy}
-          onClick={onClose}
+          onClick={requestClose}
         >
           ×
         </button>
       </header>
-      {children}
+      <DialogCloseContext.Provider value={requestClose}>
+        {children}
+      </DialogCloseContext.Provider>
     </dialog>
   );
 }
