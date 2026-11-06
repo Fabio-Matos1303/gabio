@@ -972,3 +972,48 @@
   margin-right: 0;
   padding-right: 0;
 }
+
+/* Bound the entire workspace; each column scrolls below its own heading. */
+.tasks-section {
+  display: flex;
+  flex-direction: column;
+  height: 120vh;
+  max-height: 120vh;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tasks-section > :not(.task-views) {
+  flex-shrink: 0;
+}
+.tasks-section > .task-views {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.tasks-section .task-views > :not(.task-view-content) {
+  flex-shrink: 0;
+}
+.tasks-section .task-view-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.tasks-section .task-board {
+  height: 100%;
+  min-height: 0;
+}
+.tasks-section .task-column {
+  min-height: 0;
+}
+.tasks-section .task-column-header {
+  flex-shrink: 0;
+}
+.tasks-section .task-column-cards {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  padding: 3px;
+}
