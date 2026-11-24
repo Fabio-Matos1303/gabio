@@ -1,44 +1,49 @@
 # Atualização automática Google
 
-Data: 2026-11-24. Status: publicação, commit e push autorizados; verificações de produção em andamento.
+Data: 2026-11-24. Status: código, migration e cliente publicados; fila da conexão autorizada zerada, com Agenda e Tasks sincronizados. A outra conta permanece em reconexão e não bloqueia essa conexão.
 
-Versão candidata: `automatic-google-reading-2026.11.24.1`. Base remota: `4d518a8e18af614066bfad15d2fa53a749ba4559`. Entrega composta em worktree isolada, preservando alterações anteriores do workspace.
+Versão pública: `automatic-google-reading-2026.11.24.1`. Commit da implementação: `cbfadfd14f6514617f320ed7ce8e5dc2310afc72`, sobre `4d518a8e18af614066bfad15d2fa53a749ba4559`. Entrega isolada em worktree; alterações locais anteriores preservadas. Publicação, commit e push autorizados pelo usuário nesta conversa.
 
-## Diagnóstico confirmado no código
+## Causas e comportamento corrigido
 
-- A leitura externa era manual após invalidação, exibindo “Atualizar leitura Google”.
-- A conclusão Gabio já gera projeção: Tasks atualiza status; Agenda mantém histórico com marca no título. Não existe conclusão nativa de tarefa em evento Calendar.
-- O agendador versionado chama o worker a cada dois minutos; o worker processa até dois jobs por chamada. Não foi verificada sua execução no ambiente de produção nesta demanda. Fila acumulada pode exigir vários ciclos.
-- Tasks exige consentimento pessoal de escrita e preferência para novas tarefas. Vínculos antigos de Agenda permanecem no destino original. A entrega anterior registrou consentimento individual e conferência do Console Google como pendentes; isso não comprova o estado atual de uma conta.
+A leitura externa era manual após invalidação, exigindo “Atualizar leitura Google”. Agora a tela refaz a consulta automaticamente após pelo menos 65 segundos desde a tentativa anterior e renova consultas completas a cada 15 minutos enquanto estiver visível e online. Pausar durante carregamento, falta de autorização, reconexão e paginação pendente. Preservar ações manuais e avisos de erro/consentimento. Conteúdo externo continua somente em memória.
 
-## Correção preparada
+O agendador estava ativo a cada dois minutos, mas uma barreira de limpeza cruzava conexões pelo ID da tarefa. A conta que exigia reconexão bloqueava os envios autorizados da outra. A migration incremental `202611240001_google_sync_connection_isolation.sql` limita a barreira à mesma conexão. Trocas de provedor/categoria nessa conta ainda exigem remoção confirmada da cópia anterior. Elegibilidade, visibilidade, membership, escopos, leases e limites permanecem preservados. Ver ADR-017.
 
-Leitura automática após invalidação, com cooldown de 65 segundos, e atualização de consultas completas a cada 15 minutos com tela visível e conexão. Pausar durante carregamento, falta de autorização, reconexão e paginação pendente. Preservar ações manuais e avisos de erro/consentimento. Nenhum dado externo novo é persistido. Ver ADR-017.
+Tasks recebe o estado concluído; Agenda mantém o evento com marca no título. Não há conclusão nativa de tarefa em evento Calendar. O worker processa no máximo dois jobs por chamada e um por conexão; filas acumuladas exigem ciclos adicionais. Não houve alteração na frequência ou nas credenciais do agendador.
 
-## Validação executada
+## Validação
 
-- Suíte web: 113 testes aprovados. Depois foi adicionado um teste de retorno da conexão; os cinco testes do hook passaram em execução específica.
-- Typecheck web e ESLint dos quatro arquivos TypeScript alterados aprovados.
-- Prettier dos arquivos frontend e ADR aprovado.
-- Build PWA aprovado; permanece aviso de bundle acima de 500 kB.
-- Revisão independente de segurança do hook e integração: sem bloqueadores; revisão estática.
+- `pnpm verify` completo na release isolada: formatação, lint, tipos, 57 testes dos pacotes, 114 web, 57 Google e build PWA aprovados. Permanece aviso de bundle acima de 500 kB.
+- Banco QA novo no servidor local, sem conteúdo pessoal, usando somente schema auth e identidades sintéticas: todas as migrations e 365 asserções pgTAP aprovadas, incluindo 18 novas sobre isolamento, conclusão nos dois provedores, consentimento/flag, limpeza dentro da mesma conta, privacidade e privilégios.
+- Revisão independente de segurança aprovada. O revisor confirmou que a única mudança efetiva na função é o join por connection_id e executou independentemente as 18 novas asserções, todas aprovadas.
+- Prévia sintética nos viewports 360×800, 768×1024, 1366×768 e 1920×1080: sem overflow horizontal da página; conteúdo, seções e navegação preservados. Botão Mais ações com 44×44 px no mobile; diálogo de leitura e retorno ao quadro exercitados. Conferidos fundo creme, superfícies existentes e ausência do alerta manual antigo.
+- Não foram feitos nova medição numérica de contraste, auditoria com leitor de tela, fallback sem blur, ampliação de texto, aparelho físico ou teste automatizado de tarefas reais.
 
-Não foram executados banco, consulta operacional SQL, testes com Google real, homologação de consentimento, validação visual nos quatro viewports nem publicação. Nenhuma migration ou segredo foi alterado. Alterações locais anteriores foram preservadas.
+## Produção
 
-## Próxima etapa operacional
+O diagnóstico por metadados, após login realizado pelo usuário no Dashboard, encontrou cron ativo, 720 execuções em 24 horas e 30 respostas HTTP 200 na hora observada com zero processamentos. Havia 52 pendências. Nenhuma conexão possuía escopo de escrita Tasks; uma exigia reconexão. A barreira cruzada bloqueava 14 atualizações Calendar e 11 Tasks da conexão ativa. Nenhum conteúdo de tarefa, token ou valor Vault foi consultado.
 
-Executar `scripts/operations/inspect-google-sync.sql` com acesso de operador: somente metadados e contagens, sem conteúdo pessoal ou credenciais. Confirmar cron ativo, presença dos dois secrets por nome, execuções e respostas HTTP. Sucesso no cron significa despacho, não sucesso da função. O agregado HTTP inclui respostas de outras integrações do projeto e não é prova isolada do worker Google. Conferir pendências/erros por provedor, destino padrão, escopo e roteamento.
+A fonte remota anterior foi conferida por MD5 de prosrc: `5af61c6c5a520e35382f5d4fd6c6143e`, idêntica à base revisada. A primeira tentativa de aplicação pelo editor foi revertida pelo guard de fonte nova; nada foi confirmado nessa transação. A aplicação final substituiu exclusivamente o join na definição canônica existente, em transação com guards antes/depois, e registrou a migration no histórico. Fonte final conferida: `2db63305a6104121208a89c18cb76d4b`, idêntica à migration testada. O histórico contém a definição canônica aplicada; PostgREST recebeu reload schema.
 
-Tratar causa encontrada antes de declarar envio corrigido. Não retentar inserções Tasks ambíguas cegamente, não migrar vínculos históricos e não modificar consentimentos de outras pessoas. Consentimento deve ser concluído pela própria pessoa em Ajustes > Integrações > Google > Autorizar Google Tarefas.
+Verificados após aplicação: migration registrada, RLS ativo em tarefas/conexões/vínculos, execução do claim negada a anon/authenticated e permitida a service_role. No primeiro ciclo automático observado, um envio foi concluído e as pendências Calendar da conexão ativa caíram de 14 para 13. Isso confirma retomada do worker; não significa que toda a fila já foi concluída.
 
-Publicação exige autorização conforme AGENTS.md. Com autorização, compor release isolada preservando outras alterações, verificar checks, publicar e confirmar versão e disponibilidade na URL de produção. A entrega permanece pendente até essa verificação.
+URL verificada: https://gabio.fabiosmo123.workers.dev. Version.json confirmou a versão acima. HTML, JavaScript, CSS, manifesto, service worker e registro responderam HTTP 200. JavaScript `/assets/index-PzlCe9YV.js` contém a mensagem de leitura automática e não contém “Atualizar leitura Google”; CSS `/assets/index-BkfgpY77.css` preservado. Quatro checks do commit passaram: Workers Builds, Supabase Preview, application e database-security.
 
-## Diagnóstico autenticado e validação da candidata
+A regra permanente de commit/push foi incluída no AGENTS.md. Este registro final é enviado em commit posterior à implementação, conforme a regra.
 
-Consultas por metadados no Dashboard, após login realizado pelo usuário: cron ativo a cada dois minutos, 720 execuções com sucesso em 24 horas e 30 respostas HTTP 200 na hora observada, todas com zero jobs processados. Fila com 52 pendências; nenhuma das duas conexões possui escrita Tasks e uma exige reconexão. Não foram consultados conteúdo de tarefas, tokens ou valores de Vault.
+## Consentimento e operação
 
-Confirmada barreira entre contas: 14 atualizações Calendar e 11 Tasks da conexão ativa aguardavam exclusões na outra conexão em reconexão. A migration incremental limita o join da barreira à mesma conexão, sem outras mudanças na função e sem alterar migrations anteriores. A autorização de publicação e ajuste do agendador foi concedida nesta conversa em 2026-11-24; a correção não exige nova permissão OAuth.
+Cada pessoa conclui Ajustes → Integrações → Google → Autorizar Google Tarefas. A conta em reconexão deve refazer o próprio consentimento. Nenhuma pessoa pode autorizar a outra pelo Gabio. Após a publicação, o usuário autorizou Tasks e a consulta de metadados confirmou uma conexão ativa com escopo de escrita. A outra permanece em reconexão e sem escopo Tasks. Não houve mudança de escopos no Console Google nem concessão de permissão por esta automação.
 
-Na release isolada, `pnpm verify` aprovado: formatação, lint, tipos, 57 testes dos pacotes, 114 web, 57 Google e build PWA. Banco QA novo no servidor local, com somente schema auth e identidades sintéticas: todas as migrations e 365 checks pgTAP aprovados, incluindo 18 novos de isolamento da fila. As tentativas iniciais de montagem da infraestrutura QA exigiram reproduzir os privilégios padrão do Supabase; nenhum banco operacional foi alterado. Foram corrigidas duas asserções novas para reconhecer que o payload Calendar legado omite o campo provider.
+## Recuperação limitada do acúmulo
 
-A regra permanente de commit/push está incluída no AGENTS.md: publicar o commit enviado e enviar também o registro final. Revisão de segurança independente do frontend aprovada; revisão da migration concreta e execução de produção serão registradas abaixo.
+A reautorização enfileirou 57 operações na conexão ativa: 30 limpezas Tasks, 11 upserts Tasks e 16 upserts Calendar. Foi preparado e enviado o script `supabase/schedules/google_sync_catchup.sql` no commit `029a2ac`, com revisão independente de segurança aprovada. O job temporário usa o mesmo worker e nomes Vault, a cada cinco segundos, por no máximo quinze minutos. O prazo absoluto é embutido no agendamento e conferido antes de cada POST. Sem trabalho disponível na conexão ativa ou ao expirar, o job remove a si próprio; o cron normal de dois minutos é preservado.
+
+Leases, orçamento diário e regras de consentimento/retry permanecem soberanos. Jobs terminais não são reabertos e inserções ambíguas não são repetidas. O prazo impede novos despachos, mas requisições em voo podem terminar depois. Encerramento também pode deixar trabalhos futuros ou de contas em reconexão, que não devem ser contados como recuperados.
+
+Resultado confirmado às 08:50 de 2026-11-24, America/Bahia: nenhuma operação pendente na conexão ativa; 16 projeções Calendar e 11 Tasks com estado synced e sem error_code. As 31 limpezas Tasks observadas no intervalo terminaram com estado deleted. O job temporário executou 54 vezes com sucesso e removeu a si próprio. O único job Google restante é o normal, ativo em `*/2 * * * *`. Foram observadas 58 operações processadas no intervalo completo de diagnóstico; esses contadores são operacionais e não representam quantidade de novas tarefas criadas.
+
+Não foram criadas tarefas reais para testes nem lido seu conteúdo. A verificação de produção usou estados/contagens do worker e a autorização realizada pelo próprio usuário. A outra conexão ainda possui pendências de reconexão e não foi alterada. Os bancos descartáveis de QA foram removidos após os testes, preservando o banco operacional local.
+
+A preferência de destino vale para novas tarefas; vínculos antigos de Agenda permanecem na Agenda. Uma conta pode sincronizar enquanto outra aguarda limpeza/reconexão; remoção de cópias na conta desconectada não é instantânea. Não retentar POSTs ambíguos nem migrar histórico automaticamente. `scripts/operations/inspect-google-sync.sql` permite repetir diagnóstico por metadados sem revelar conteúdo ou credenciais. O agregado HTTP inclui outras integrações do projeto e não comprova sozinho sucesso do worker Google.

@@ -1,5 +1,5 @@
 -- Read-only operational diagnostics. Run with authorized operator access.
--- Do not select cron command text, HTTP bodies, Vault values, IDs or user content.
+-- Do not select cron command text, HTTP bodies, Vault values, user IDs or user content.
 begin read only;
 
 select jobid, schedule, active
