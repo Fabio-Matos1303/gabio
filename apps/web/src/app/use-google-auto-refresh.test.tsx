@@ -20,7 +20,7 @@ describe("automatic Google reading", () => {
         enabled: true,
         invalidated: true,
         loading: false,
-        lastAttempt: Date.now(),
+        lastAttempt: { current: Date.now() },
         refresh,
       }),
     );
@@ -43,7 +43,7 @@ describe("automatic Google reading", () => {
         enabled: true,
         invalidated: false,
         loading: false,
-        lastAttempt: Date.now(),
+        lastAttempt: { current: Date.now() },
         refresh,
       }),
     );
@@ -64,7 +64,7 @@ describe("automatic Google reading", () => {
       useGoogleAutoRefresh({
         ...state,
         invalidated: false,
-        lastAttempt: Date.now(),
+        lastAttempt: { current: Date.now() },
         refresh,
       }),
     );
@@ -83,7 +83,7 @@ describe("automatic Google reading", () => {
         enabled: true,
         invalidated: false,
         loading: false,
-        lastAttempt: Date.now(),
+        lastAttempt: { current: Date.now() },
         refresh,
       }),
     );

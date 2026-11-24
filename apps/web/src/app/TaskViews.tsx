@@ -59,6 +59,7 @@ export function TaskViews({
   >(null);
   const [reading, setReading] = useState<GoogleReading | null>(null);
   const [readError, setReadError] = useState(false);
+  const [rateLimitAttempts, setRateLimitAttempts] = useState(0);
   const [readingInvalidated, setReadingInvalidated] = useState(false);
   const readEpoch = useRef(0);
   const lastReadAttempt = useRef(0);
@@ -97,6 +98,7 @@ export function TaskViews({
       setExternalCard(null);
       setExternalEditor(null);
       setReadingInvalidated(true);
+      setRateLimitAttempts(0);
       setLoading(false);
     };
     window.addEventListener(GOOGLE_PROJECTIONS_CHANGED_EVENT, invalidate);
@@ -129,6 +131,10 @@ export function TaskViews({
       .then((value) => {
         const parsed = googleReadingSchema.parse(value);
         if (active && epoch === readEpoch.current) {
+          if (parsed.state === "rate_limited") readCursor.current = cursor;
+          setRateLimitAttempts((count) =>
+            parsed.state === "rate_limited" ? count + 1 : 0,
+          );
           setReadingInvalidated(false);
           setReading((current) => {
             if (
@@ -181,11 +187,13 @@ export function TaskViews({
       (readingInvalidated ||
         readError ||
         (!!reading &&
-          ["connected", "rate_limited"].includes(reading.state) &&
-          !reading.continuation)),
+          (reading.state === "rate_limited" ||
+            (reading.state === "connected" && !reading.continuation)))),
     invalidated: readingInvalidated,
+    retryAfterRateLimit:
+      reading?.state === "rate_limited" && rateLimitAttempts === 1,
     loading,
-    lastAttempt: lastReadAttempt.current,
+    lastAttempt: lastReadAttempt,
     refresh: () => setReadSequence((n) => n + 1),
   });
   useEffect(() => {
@@ -863,6 +871,7 @@ export function TaskViews({
         (readError ||
           (reading &&
             reading.state !== "disabled" &&
+            reading.state !== "rate_limited" &&
             (reading.state !== "connected" ||
               reading.tasksState !== "ok" ||
               reading.calendarState !== "ok"))) && (
@@ -925,7 +934,7 @@ export function TaskViews({
                           : reading.state === "reconnect"
                             ? "Reconecte sua conta Google em Ajustes."
                             : reading.state === "rate_limited"
-                              ? "Aguarde um minuto antes de atualizar o Google. Os itens exibidos são da última consulta e podem não cobrir o mês selecionado."
+                              ? "A leitura do Google será retomada automaticamente. Os itens exibidos são da última consulta."
                               : `Google consultado às ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", timeStyle: "short" }).format(new Date(reading.checkedAt))}.`}
                     </p>
                     {reading.tasksState !== "ok" && (
@@ -953,7 +962,7 @@ export function TaskViews({
               {reading?.continuation && (
                 <button
                   type="button"
-                  disabled={loading}
+                  disabled={loading || reading.state === "rate_limited"}
                   onClick={() => {
                     readCursor.current = reading.continuation ?? undefined;
                     setReadSequence((n) => n + 1);
@@ -964,7 +973,7 @@ export function TaskViews({
               )}
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || reading?.state === "rate_limited"}
                 onClick={() => setReadSequence((n) => n + 1)}
               >
                 Atualizar Google

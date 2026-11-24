@@ -192,6 +192,49 @@ const workerRequest = () =>
     method: "POST",
     headers: { authorization: `Bearer ${"s".repeat(32)}` },
   });
+test("worker completes and reopens the same Google Task using the latest version", async () => {
+  for (const [status, version] of [
+    ["completed", 2],
+    ["open", 3],
+  ] as const) {
+    const current = {
+      ...(await job()),
+      remoteTaskId: "synthetic-existing-task",
+      task: { ...task, status, version },
+    };
+    let result: unknown;
+    let calls = 0;
+    const handler = createCalendarWorker({
+      config,
+      workerSecret: "s".repeat(32),
+      tasksProvider: transport(async (url, init) => {
+        calls++;
+        assert.equal(init?.method, "PATCH");
+        assert.ok(String(url).endsWith("/tasks/synthetic-existing-task"));
+        const sent = JSON.parse(String(init?.body));
+        assert.equal(
+          sent.status,
+          status === "completed" ? "completed" : "needsAction",
+        );
+        if (status === "open") assert.equal(sent.completed, null);
+        return Response.json({ id: "synthetic-existing-task" });
+      }),
+      rpc: async (name, args) => {
+        if (name === "gc_claim_jobs_v2") return [current];
+        if (name === "gc_validate_job") return current;
+        if (name === "gc_finish_job") result = args.result;
+        return null;
+      },
+    });
+    assert.deepEqual(await (await handler(workerRequest())).json(), {
+      processed: 1,
+      failed: 0,
+    });
+    assert.equal(calls, 1);
+    assert.deepEqual(result, { status: "synced", sentVersion: version });
+  }
+});
+
 test("worker persists insertion attempt and returned identity before acknowledging sent version", async () => {
   const current = await job();
   const order: string[] = [];

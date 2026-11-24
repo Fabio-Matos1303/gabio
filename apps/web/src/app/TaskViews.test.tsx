@@ -39,6 +39,124 @@ const tasks = ["Limpar cozinha", "Comprar materiais"].map((title, i) =>
   }),
 );
 describe("TaskViews", () => {
+  it("automatically retries a rate-limited continuation using the same cursor", async () => {
+    vi.useFakeTimers();
+    const page = {
+      state: "connected",
+      generation: "50000000-0000-4000-8000-000000000001",
+      checkedAt: "2026-11-24T12:00:00Z",
+      tasksState: "ok",
+      calendarState: "ok",
+      sources: [],
+      items: [],
+      continuation: "synthetic-cursor",
+    };
+    const readGoogleItems = vi
+      .fn()
+      .mockResolvedValueOnce(page)
+      .mockResolvedValueOnce({
+        ...page,
+        state: "rate_limited",
+        continuation: null,
+      })
+      .mockResolvedValue({ ...page, continuation: null });
+    try {
+      await act(async () => {
+        render(
+          <TaskViews
+            tasks={tasks}
+            renderTask={(t) => <article key={t.id}>{t.title}</article>}
+            gateway={{ readGoogleItems } as unknown as AppGateway}
+            household={house}
+            userId={userId}
+            catalog={[]}
+            onTagsChanged={async () => {}}
+          />,
+        );
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Carregar mais itens Google" }),
+        );
+      });
+      expect(readGoogleItems).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByRole("button", { name: "Carregar mais itens Google" }),
+      ).toBeDisabled();
+      await act(async () => {
+        vi.advanceTimersByTime(65_000);
+      });
+      expect(readGoogleItems).toHaveBeenCalledTimes(3);
+      expect(readGoogleItems.mock.calls[1]?.[1]).toBe("synthetic-cursor");
+      expect(readGoogleItems.mock.calls[2]?.[1]).toBe("synthetic-cursor");
+      expect(
+        screen.queryByRole("button", { name: "Carregar mais itens Google" }),
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("recovers a reading cooldown automatically without an attention alert or repeated manual requests", async () => {
+    vi.useFakeTimers();
+    const snapshot = {
+      state: "rate_limited",
+      generation: "50000000-0000-4000-8000-000000000001",
+      checkedAt: "2026-11-24T12:00:00Z",
+      tasksState: "ok",
+      calendarState: "ok",
+      sources: [],
+      items: [],
+    };
+    const readGoogleItems = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValueOnce(snapshot)
+      .mockResolvedValue({ ...snapshot, state: "connected" });
+    try {
+      await act(async () => {
+        render(
+          <TaskViews
+            tasks={tasks}
+            renderTask={(t) => <article key={t.id}>{t.title}</article>}
+            gateway={{ readGoogleItems } as unknown as AppGateway}
+            household={house}
+            userId={userId}
+            catalog={[]}
+            onTagsChanged={async () => {}}
+          />,
+        );
+      });
+      expect(
+        screen.queryByRole("button", { name: /Google precisa de atenção/ }),
+      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Mais ações" }));
+      expect(
+        screen.getByText(/A leitura do Google será retomada automaticamente/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Atualizar Google" }),
+      ).toBeDisabled();
+      await act(async () => {
+        vi.advanceTimersByTime(65_000);
+      });
+      expect(readGoogleItems).toHaveBeenCalledTimes(2);
+      // A second refusal can be the daily budget: return to the normal interval.
+      await act(async () => {
+        vi.advanceTimersByTime(65_000);
+      });
+      expect(readGoogleItems).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        vi.advanceTimersByTime(15 * 60_000 - 65_000);
+      });
+      expect(readGoogleItems).toHaveBeenCalledTimes(3);
+      expect(
+        screen.getByRole("button", { name: "Atualizar Google" }),
+      ).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("discards an in-flight Google read and schedules automatic recovery after synchronization changes", async () => {
     let resolve!: (value: unknown) => void;
     const readGoogleItems = vi.fn().mockImplementation(

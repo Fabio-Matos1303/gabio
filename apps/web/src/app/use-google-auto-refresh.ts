@@ -6,14 +6,16 @@ export const GOOGLE_READ_COOLDOWN_MS = 65 * 1000;
 export function useGoogleAutoRefresh({
   enabled,
   invalidated,
+  retryAfterRateLimit = false,
   loading,
   lastAttempt,
   refresh,
 }: {
   enabled: boolean;
   invalidated: boolean;
+  retryAfterRateLimit?: boolean;
   loading: boolean;
-  lastAttempt: number;
+  lastAttempt: { readonly current: number };
   refresh: () => void;
 }) {
   useEffect(() => {
@@ -22,8 +24,10 @@ export function useGoogleAutoRefresh({
     const check = () => {
       clearTimeout(timer);
       const remaining =
-        lastAttempt +
-        (invalidated ? GOOGLE_READ_COOLDOWN_MS : GOOGLE_READ_INTERVAL_MS) -
+        lastAttempt.current +
+        (invalidated || retryAfterRateLimit
+          ? GOOGLE_READ_COOLDOWN_MS
+          : GOOGLE_READ_INTERVAL_MS) -
         Date.now();
       if (document.visibilityState !== "hidden" && navigator.onLine) {
         if (remaining <= 0) {
@@ -43,5 +47,12 @@ export function useGoogleAutoRefresh({
       window.removeEventListener("focus", check);
       window.removeEventListener("online", check);
     };
-  }, [enabled, invalidated, loading, lastAttempt, refresh]);
+  }, [
+    enabled,
+    invalidated,
+    retryAfterRateLimit,
+    loading,
+    lastAttempt,
+    refresh,
+  ]);
 }

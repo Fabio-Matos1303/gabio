@@ -572,6 +572,86 @@ test("worker creates task event and acknowledges the exact lease", async () => {
     sentVersion: 1,
   });
 });
+test("worker marks completed Calendar projections and reopens the same event", async () => {
+  const secret = "dedicated-".padEnd(43, "x");
+  const tokenCipher = await seal(
+    {
+      accessToken: "synthetic-access",
+      refreshToken: "synthetic-refresh",
+      expiresAt: Date.now() + 3600000,
+    },
+    key,
+    `${user}:${house}`,
+  );
+  for (const [status, version] of [
+    ["completed", 2],
+    ["open", 3],
+  ] as const) {
+    const current = {
+      jobId: user,
+      leaseToken: user,
+      connectionId: user,
+      userId: user,
+      householdId: house,
+      tokenCipher,
+      action: "upsert",
+      task: { ...task, status, version },
+      calendarId: "synthetic-calendar",
+      targetKind: "household",
+      targetState: "ready",
+      eventId: "abcde123",
+      etag: "synthetic-existing-etag",
+      reminderMinutes: 15,
+      attempts: 1,
+    };
+    let result: unknown;
+    let calls = 0;
+    const worker = createCalendarWorker({
+      config,
+      workerSecret: secret,
+      provider: new GoogleCalendarProvider(async (url, init) => {
+        calls++;
+        assert.equal(init?.method, "PUT");
+        assert.ok(String(url).endsWith("/events/abcde123"));
+        const sent = JSON.parse(String(init?.body));
+        assert.equal(
+          sent.summary,
+          status === "completed" ? `Concluída: ${task.title}` : task.title,
+        );
+        assert.equal(
+          sent.extendedProperties.private.gabioVersion,
+          String(version),
+        );
+        if (status === "completed")
+          assert.deepEqual(sent.reminders, {
+            useDefault: false,
+            overrides: [],
+          });
+        return Response.json({ id: "abcde123", etag: "synthetic-new-etag" });
+      }),
+      rpc: async (name, args) => {
+        if (name === "gc_claim_jobs_v2") return [current];
+        if (name === "gc_validate_job") return current;
+        if (name === "gc_finish_job") result = args.result;
+        return null;
+      },
+    });
+    const response = await worker(
+      new Request("https://backend.example.test", {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}` },
+      }),
+    );
+    assert.deepEqual(await response.json(), { processed: 1, failed: 0 });
+    assert.equal(calls, 1);
+    assert.deepEqual(result, {
+      status: "synced",
+      etag: "synthetic-new-etag",
+      sentVersion: version,
+    });
+  }
+});
+
 test("privacy cleanup deletes managed event before acknowledgement", async () => {
   const secret = "dedicated-".padEnd(43, "x");
   const tokenCipher = await seal(

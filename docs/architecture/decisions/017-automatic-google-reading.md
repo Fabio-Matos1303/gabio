@@ -9,6 +9,12 @@ Substituir a exigência de atualização manual após invalidação por uma nova
 
 Não consultar automaticamente quando faltar consentimento, houver reconexão pendente, integração desativada ou páginas por carregar. Resultados parciais preservam a ação de continuação. Falhas transitórias e rate limit permitem nova tentativa no intervalo normal, sem loop imediato. Não persistir conteúdo externo no navegador. Descartar respostas invalidadas e cancelar timers/listeners ao desmontar a tela.
 
+## Complemento: limite temporário de leitura
+
+No primeiro bloqueio de leitura, retentar uma vez após 65 segundos; bloqueios consecutivos voltam ao intervalo de quinze minutos, pois o contrato legado não diferencia cooldown de orçamento diário. Durante o bloqueio, não exigir atenção e desabilitar Atualizar/Carregar mais. Se a tentativa bloqueada usava continuação, retomar o mesmo cursor e preservar os itens acumulados; paginação normal continua manual. Falhas reais de autorização e fontes continuam visíveis.
+
+O temporizador deve consultar a referência atual da última tentativa, inclusive quando outro efeito inicia uma leitura na mesma renderização. Capturar o número durante renderização permitia uma segunda requisição imediata com horário anterior, produzindo o próprio rate limit. Leitura e envio são estados distintos e devem ser descritos separadamente.
+
 O envio Gabio → Google continua responsabilidade da outbox e do worker autenticado agendado no servidor, inclusive com a aplicação fechada. Leitura automática não resolve falhas de envio nem concede escopos. Google Tasks continua exigindo consentimento individual para escrita. Nenhum novo escopo, custo ou sincronização bidirecional é introduzido.
 
 ## Isolamento da fila por conexão
