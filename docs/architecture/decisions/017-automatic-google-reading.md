@@ -1,7 +1,7 @@
 # ADR-017: Atualização automática da leitura Google
 
 - Data: 2026-11-24.
-- Status: implementação e publicação autorizadas pelo usuário em 2026-11-24; verificação de produção pendente.
+- Status: implementação e publicação autorizadas pelo usuário em 2026-11-24; cliente, migration e retomada do worker verificados em produção na mesma data. Consentimento individual Tasks permanece necessário.
 
 ## Decisão
 
@@ -16,3 +16,5 @@ O envio Gabio → Google continua responsabilidade da outbox e do worker autenti
 O diagnóstico de produção confirmou que a barreira de limpeza do ADR-016 vinculava contas diferentes pelo mesmo item. Uma conta aguardando reconexão bloqueava atualizações autorizadas da outra. A migration incremental `202611240001` limita essa dependência à mesma conexão pessoal: limpeza de provedor/categoria anterior nessa conta continua obrigatória antes do novo envio. Membership, proprietário, visibilidade, escopos, intenções e leases continuam revalidados.
 
 Uma conta pode sincronizar enquanto outra aguarda limpeza e reconexão. Isso não garante remoção imediata de cópias numa conta desconectada. Não há migração histórica, nova permissão ou alteração de credenciais.
+
+Para recuperar o acúmulo após reautorização nesta entrega, permitir execução operacional temporária do mesmo worker a cada cinco segundos, por no máximo quinze minutos. Um job separado possui prazo absoluto, remove a si próprio ao expirar ou não haver trabalho disponível na conta conectada e preserva o cron normal. Autenticação, leases, orçamento diário, consentimento e retries permanecem no worker. Não reabrir jobs terminais nem repetir inserções ambíguas.
