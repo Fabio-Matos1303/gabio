@@ -39,7 +39,7 @@ const tasks = ["Limpar cozinha", "Comprar materiais"].map((title, i) =>
   }),
 );
 describe("TaskViews", () => {
-  it("discards an in-flight Google read after synchronization changes without automatic polling", async () => {
+  it("discards an in-flight Google read and schedules automatic recovery after synchronization changes", async () => {
     let resolve!: (value: unknown) => void;
     const readGoogleItems = vi.fn().mockImplementation(
       () =>
@@ -74,8 +74,8 @@ describe("TaskViews", () => {
       }),
     );
     expect(
-      screen.getByRole("button", { name: /Atualizar leitura Google/ }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: /Atualizar leitura Google/ }),
+    ).not.toBeInTheDocument();
     expect(readGoogleItems).toHaveBeenCalledTimes(1);
   });
   it("orders by nearest deadline and shows filtered counts per task phase without a total", () => {

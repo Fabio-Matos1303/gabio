@@ -20,6 +20,7 @@ Este repositório contém um sistema residencial com dados pessoais e financeiro
 - Antes de concluir, execute os checks proporcionais e informe exatamente o que foi ou não validado.
 - Uma alteração só está concluída após ser publicada em produção e ter a versão e a disponibilidade verificadas na URL de produção. Código local, commit, build e preview são etapas intermediárias.
 - Conduza a entrega até produção quando a publicação estiver autorizada no pedido ou na conversa. Se faltar autorização, acesso ou houver falha de publicação, informe o impedimento e mantenha a alteração como pendente de produção; não a declare concluída.
+- Toda publicação deve incluir commit e push dos arquivos da entrega, com mensagem em inglês e sem segredos ou alterações alheias. Parta da versão remota atual, use uma cópia isolada quando houver trabalho local não relacionado e publique o commit enviado. Após o deploy, registre commit, checks, versão e disponibilidade na URL de produção; faça commit e push também do registro final de entrega. Não considere a publicação encerrada com alterações da entrega apenas locais.
 
 Interface e mensagens para o usuário devem usar português brasileiro. Código, nomes técnicos e commits usam inglês.
 

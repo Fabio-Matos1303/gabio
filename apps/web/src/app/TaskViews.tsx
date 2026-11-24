@@ -1,4 +1,5 @@
 import { TaskIcon } from "./TaskIcon.js";
+import { useGoogleAutoRefresh } from "./use-google-auto-refresh.js";
 import { useContentMotion } from "./use-content-motion.js";
 import { DialogCloseButton, TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskTagFields } from "./TaskTagFields.js";
@@ -60,6 +61,7 @@ export function TaskViews({
   const [readError, setReadError] = useState(false);
   const [readingInvalidated, setReadingInvalidated] = useState(false);
   const readEpoch = useRef(0);
+  const lastReadAttempt = useRef(0);
   const [loading, setLoading] = useState(false);
   const [readSequence, setReadSequence] = useState(0);
   const readCursor = useRef<string | undefined>(undefined);
@@ -115,12 +117,14 @@ export function TaskViews({
     if (
       readAttempt.current?.key !== key ||
       readAttempt.current.gateway !== gateway
-    )
+    ) {
+      lastReadAttempt.current = Date.now();
       readAttempt.current = {
         key,
         gateway,
         promise: gateway.readGoogleItems(month, cursor),
       };
+    }
     readAttempt.current.promise
       .then((value) => {
         const parsed = googleReadingSchema.parse(value);
@@ -171,6 +175,19 @@ export function TaskViews({
       active = false;
     };
   }, [gateway, month, readSequence]);
+  useGoogleAutoRefresh({
+    enabled:
+      !!gateway.readGoogleItems &&
+      (readingInvalidated ||
+        readError ||
+        (!!reading &&
+          ["connected", "rate_limited"].includes(reading.state) &&
+          !reading.continuation)),
+    invalidated: readingInvalidated,
+    loading,
+    lastAttempt: lastReadAttempt.current,
+    refresh: () => setReadSequence((n) => n + 1),
+  });
   useEffect(() => {
     if (externalEditor && reading?.generation !== externalEditor.generation)
       setExternalEditor(null);
@@ -843,8 +860,7 @@ export function TaskViews({
         </TaskCardDialog>
       )}
       {gateway.readGoogleItems &&
-        (readingInvalidated ||
-          readError ||
+        (readError ||
           (reading &&
             reading.state !== "disabled" &&
             (reading.state !== "connected" ||
@@ -857,11 +873,9 @@ export function TaskViews({
               onClick={() => setMoreOpen(true)}
             >
               <TaskIcon name="warning" />
-              {readingInvalidated
-                ? "Atualizar leitura Google"
-                : reading?.state === "consent_required"
-                  ? "Autorizar leitura Google"
-                  : "Google precisa de atenção"}
+              {reading?.state === "consent_required"
+                ? "Autorizar leitura Google"
+                : "Google precisa de atenção"}
               <span className="sr-only">. Abrir detalhes da leitura</span>
             </button>
           </div>
@@ -891,8 +905,8 @@ export function TaskViews({
               {loading && <p role="status">Atualizando itens do Google…</p>}
               {readingInvalidated && (
                 <p role="status">
-                  A sincronização mudou. Atualize a leitura para consultar os
-                  itens externos novamente.
+                  A leitura do Google será atualizada automaticamente quando a
+                  tela estiver ativa e houver conexão.
                 </p>
               )}
               {readError ? (
