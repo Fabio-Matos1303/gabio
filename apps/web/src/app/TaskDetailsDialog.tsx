@@ -371,10 +371,10 @@ export function TaskDetailsDialog({
                   </>
                 )}
                 <div className="card-editor-actions">
-                  <button className="primary-button">Salvar alteração</button>
                   <DialogCloseButton disabled={busy}>
-                    Cancelar edição
+                    Cancelar
                   </DialogCloseButton>
+                  <button className="primary-button">Salvar</button>
                 </div>
               </fieldset>
             </form>

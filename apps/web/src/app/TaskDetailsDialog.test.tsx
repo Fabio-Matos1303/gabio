@@ -75,7 +75,7 @@ describe("task details", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Tags/ }));
     const editor = within(screen.getByRole("dialog", { name: "Editar tags" }));
     fireEvent.click(editor.getByRole("button", { name: "Remover tag Casa" }));
-    fireEvent.click(editor.getByRole("button", { name: "Cancelar edição" }));
+    fireEvent.click(editor.getByRole("button", { name: "Cancelar" }));
     expect(
       screen.getByRole("dialog", { name: "Descartar alterações?" }),
     ).toBeInTheDocument();
@@ -99,7 +99,7 @@ describe("task details", () => {
         task={{ ...task, title: "Alteração remota", version: 2 }}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Salvar alteração" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() =>
       expect(props.onUpdate).toHaveBeenCalledWith({ title: "Meu rascunho" }, 1),
     );
@@ -121,7 +121,7 @@ describe("task details", () => {
     await act(async () => {
       window.dispatchEvent(new Event("online"));
     });
-    fireEvent.click(screen.getByRole("button", { name: "Salvar observações" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() =>
       expect(execute).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -151,7 +151,7 @@ describe("task details", () => {
     fireEvent.change(screen.getByLabelText("Nome da checklist"), {
       target: { value: "   " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Salvar checklist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("texto válido");
     expect(execute).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Nome da checklist"), {
@@ -168,7 +168,7 @@ describe("task details", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Mover item 2 para cima" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Salvar checklist" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await waitFor(() =>
       expect(execute).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -256,9 +256,7 @@ describe("task details", () => {
       expect(card.querySelector("form")).toBeNull();
       expect(card.contains(editor)).toBe(false);
       expect(within(editor).getByLabelText(label)).toBeInTheDocument();
-      fireEvent.click(
-        within(editor).getByRole("button", { name: "Cancelar edição" }),
-      );
+      fireEvent.click(within(editor).getByRole("button", { name: "Cancelar" }));
       await waitFor(() =>
         expect(
           screen.queryByRole("dialog", { name: title }),

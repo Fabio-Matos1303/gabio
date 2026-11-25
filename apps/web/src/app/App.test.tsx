@@ -160,7 +160,7 @@ describe("App", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Observações" }), {
       target: { value: "Conteúdo pendente" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Salvar observações" }));
+    fireEvent.click(screen.getByRole("button", { name: "Salvar" }));
     await screen.findByText(/Alteração guardada neste dispositivo/);
     await waitFor(() =>
       expect(
@@ -256,7 +256,7 @@ describe("App", () => {
     fireEvent.change(form.getByLabelText("Fim do evento"), {
       target: { value: "2027-01-04T10:30" },
     });
-    fireEvent.click(form.getByRole("button", { name: "Salvar alteração" }));
+    fireEvent.click(form.getByRole("button", { name: "Salvar" }));
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -286,7 +286,7 @@ describe("App", () => {
       target: { value: "custom" },
     });
     fireEvent.click(editor.getByLabelText("Terça"));
-    fireEvent.click(editor.getByRole("button", { name: "Salvar alteração" }));
+    fireEvent.click(editor.getByRole("button", { name: "Salvar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Recorrências exigem prazo válido",
     );
@@ -739,9 +739,7 @@ describe("App", () => {
     fireEvent.change(titleEditor.getByLabelText("Título"), {
       target: { value: "Título sintético revisado" },
     });
-    fireEvent.click(
-      titleEditor.getByRole("button", { name: "Salvar alteração" }),
-    );
+    fireEvent.click(titleEditor.getByRole("button", { name: "Salvar" }));
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
         expect.objectContaining({

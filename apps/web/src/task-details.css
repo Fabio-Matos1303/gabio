@@ -219,11 +219,17 @@
   font-size: 1rem;
 }
 .task-editor-dialog .card-editor-actions {
-  position: sticky;
-  bottom: -20px;
-  padding: 12px 0 20px;
-  background: var(--glass-fallback);
-  border-top: 1px solid #c9cfc1;
+  justify-content: flex-end;
+  align-items: center;
+  padding-top: 12px;
+  background: transparent;
+}
+.task-editor-dialog .card-editor-actions button {
+  width: auto;
+  max-width: 100%;
+}
+.task-editor-dialog .task-tag-fields > legend {
+  margin-bottom: 12px;
 }
 .task-editor-dialog .task-dialog-heading h2 {
   min-width: 0;

@@ -193,6 +193,33 @@ function contrast(a, b) {
           .locator(".task-editor-content")
           .evaluate((s) => s.scrollWidth > s.clientWidth);
         assert.equal(overflow, false);
+        const footer = editor.locator(".card-editor-actions");
+        const cancel = footer.getByRole("button", {
+          name: "Cancelar",
+          exact: true,
+        });
+        const save = footer.getByRole("button", {
+          name: "Salvar",
+          exact: true,
+        });
+        await save.scrollIntoViewIfNeeded();
+        const cancelBounds = await cancel.boundingBox();
+        const saveBounds = await save.boundingBox();
+        assert.ok(Math.abs(cancelBounds.y - saveBounds.y) < 1);
+        assert.ok(saveBounds.x >= cancelBounds.x + cancelBounds.width);
+        const footerStyle = await footer.evaluate((el) => ({
+          background: getComputedStyle(el).backgroundColor,
+          justify: getComputedStyle(el).justifyContent,
+        }));
+        assert.equal(footerStyle.background, "rgba(0, 0, 0, 0)");
+        assert.equal(footerStyle.justify, "flex-end");
+        if (index === 3) {
+          const legend = await editor
+            .locator(".task-tag-fields > legend")
+            .boundingBox();
+          const selected = await editor.locator(".tag-selected").boundingBox();
+          assert.ok(selected.y - (legend.y + legend.height) >= 12);
+        }
         const after = await dialog.locator(".card-properties").boundingBox();
         assert.equal(after.height, before.height);
         await page.screenshot({
@@ -247,9 +274,7 @@ function contrast(a, b) {
       await notesEditor
         .getByRole("textbox", { name: "Observações" })
         .fill("Orientação sintética revisada\nConferir todos os materiais.");
-      await notesEditor
-        .getByRole("button", { name: "Salvar observações" })
-        .click();
+      await notesEditor.getByRole("button", { name: "Salvar" }).click();
       await notesEditor.waitFor({ state: "hidden" });
       await dialog
         .getByText("Orientação sintética revisada", { exact: false })
@@ -282,9 +307,7 @@ function contrast(a, b) {
       await checklistEditor
         .getByRole("button", { name: "Mover item 2 para cima" })
         .click();
-      await checklistEditor
-        .getByRole("button", { name: "Salvar checklist" })
-        .click();
+      await checklistEditor.getByRole("button", { name: "Salvar" }).click();
       await checklistEditor.waitFor({ state: "hidden" });
       await dialog
         .getByRole("heading", { name: "Conferência sintética" })
@@ -309,9 +332,7 @@ function contrast(a, b) {
       await titleEditor
         .getByRole("textbox", { name: "Título", exact: true })
         .fill("Cartão sintético revisado");
-      await titleEditor
-        .getByRole("button", { name: "Salvar alteração" })
-        .click();
+      await titleEditor.getByRole("button", { name: "Salvar" }).click();
       await titleEditor.waitFor({ state: "hidden" });
       await dialog
         .getByRole("button", { name: "Editar título" })

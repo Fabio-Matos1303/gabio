@@ -290,12 +290,12 @@ export function TaskCardContentPanel({
                     />
                   </label>
                   <div className="card-editor-actions">
-                    <button className="primary-button" disabled={disabled}>
-                      Salvar observações
-                    </button>
                     <DialogCloseButton disabled={busy}>
                       Cancelar
                     </DialogCloseButton>
+                    <button className="primary-button" disabled={disabled}>
+                      Salvar
+                    </button>
                   </div>
                 </form>
               </TaskEditorDialog>
@@ -583,14 +583,14 @@ function ChecklistEditor({
         >
           Adicionar item
         </button>
+        {onDelete && (
+          <button type="button" onClick={onDelete}>
+            Excluir checklist
+          </button>
+        )}
         <div className="card-editor-actions">
-          <button className="primary-button">Salvar checklist</button>
           <DialogCloseButton>Cancelar</DialogCloseButton>
-          {onDelete && (
-            <button type="button" onClick={onDelete}>
-              Excluir checklist
-            </button>
-          )}
+          <button className="primary-button">Salvar</button>
         </div>
       </fieldset>
     </form>
