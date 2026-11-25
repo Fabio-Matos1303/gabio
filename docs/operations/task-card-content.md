@@ -2,9 +2,10 @@
 
 Data: 2026-11-24.
 
-**Status em 2026-11-25: banco publicado e verificado; cliente em preparação para
-publicação.** O usuário autorizou continuar a entrega em produção nesta data.
-Commit/push do cliente e a verificação da versão pública permanecem em andamento.
+**Status em 2026-11-25: publicado e verificado em produção.** O usuário autorizou
+continuar a entrega em produção nesta data. Banco e cliente publicados; versão,
+disponibilidade, assets e quatro checks remotos confirmados. Este registro final
+é enviado em commit posterior à implementação, conforme AGENTS.md.
 
 ## Escopo implementado
 
@@ -143,6 +144,38 @@ de testes nomeado.
   `test-results/task-card-content` dessa worktree.
 - Versão preparada: `task-card-content-2026.11.25.1`.
 
-A publicação do cliente, a disponibilidade na URL de produção e o registro final
-com commit/push ainda precisam ser confirmados antes de considerar a entrega
-concluída.
+## Publicação verificada
+
+Implementação: `05718551bf186e1992c0fdb50beba1aa7fdd44a8`.
+Commit publicado na main: `47991334a91787183ed044c46c40c5f33e5f2639`, que também
+fixa o checkout LF das migrations. Ambos foram enviados ao GitHub antes da
+publicação; a main foi atualizada com lease para a base remota esperada, sem force.
+
+URL: https://gabio.fabiosmo123.workers.dev.
+`/version.json` confirmou `task-card-content-2026.11.25.1` e o escopo
+`tasks-online-google-reading-card-content`.
+
+Responderam HTTP 200: HTML, versão, manifesto, service worker, registro da PWA,
+JavaScript `/assets/index-DIzo8zJO.js` e CSS `/assets/index-B7pLCxbF.css`.
+O JavaScript servido contém os novos leitores `list_tasks_page_v3` e
+`read_task_card`, além de `save_notes` e `save_checklist`.
+
+Checks remotos aprovados no commit publicado:
+
+- Workers Builds: gabio;
+- Supabase Preview;
+- application, incluindo `pnpm verify` e Deno check;
+- database-security, com Supabase completo e testes de banco.
+
+CI: https://github.com/Fabio-Matos1303/gabio/actions/runs/45600707348.
+O registro de metadados após a migration confirmou o hash final, RLS, leitores e
+privilégios esperados. A verificação pública não criou nem editou tarefas reais,
+não leu seu conteúdo e não mudou integrações, escopos OAuth ou agendamentos.
+Não foi feito um fluxo autenticado com dados pessoais em produção. Os fluxos de
+edição foram exercitados com dados sintéticos na release isolada.
+
+Os containers descartáveis de QA desta entrega são removidos após os checks;
+nenhum banco operacional local é alterado. O workspace original permanece com
+suas alterações anteriores e os arquivos de desenvolvimento 002/003; eles não
+representam migrations adicionais de produção. A fonte publicada e a migration
+canônica estão na main e na worktree `Gabio-card-release`.

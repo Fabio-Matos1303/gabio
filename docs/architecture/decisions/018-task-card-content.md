@@ -1,7 +1,7 @@
 # ADR-018: Conteúdo dos cartões de tarefas
 
 - Data: 2026-11-24.
-- Status: desenvolvimento autorizado; aplicação das migrations e publicação autorizadas pelo usuário em 2026-11-25, com execução e verificação em andamento.
+- Status: desenvolvimento e publicação autorizados; versão `task-card-content-2026.11.25.1` publicada e verificada em produção em 2026-11-25.
 
 ## Decisão
 
@@ -48,3 +48,9 @@ fila legada, e seu conteúdo não é projetado como confirmação do servidor.
 Novas tabelas têm RLS desde a criação, testes positivos e negativos e revisão de
 segurança por agente distinto. Produção exige autorização, commit/push, checks,
 versão e disponibilidade verificadas e registro final conforme AGENTS.md.
+
+Na primeira publicação, os corpos das duas migrations de desenvolvimento foram
+consolidados sem mudanças funcionais em uma única transação, evitando expor a
+definição intermediária do gateway. Migration canônica:
+`20261125105946_task_card_content.sql`. Validação e limites constam no
+[registro da entrega](../../operations/task-card-content.md).
