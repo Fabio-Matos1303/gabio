@@ -21,11 +21,13 @@ export function TaskTagFields({
   catalog = [],
   visibility,
   disabled = false,
+  onSelectionChange,
 }: {
   tags?: string[];
   catalog?: TagRecord[];
   visibility: "private" | "household";
   disabled?: boolean;
+  onSelectionChange?: () => void;
 }) {
   const [selected, setSelected] = useState(tags);
   const [query, setQuery] = useState("");
@@ -43,12 +45,14 @@ export function TaskTagFields({
     n.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")),
   );
   const candidate = normalize(query);
-  const toggle = (name: string) =>
+  const toggle = (name: string) => {
+    onSelectionChange?.();
     setSelected((current) =>
       current.some((n) => same(n, name))
         ? current.filter((n) => !same(n, name))
         : [...current, name],
     );
+  };
   const canCreate =
     candidate.length > 0 &&
     candidate.length <= 32 &&

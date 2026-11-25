@@ -1,0 +1,15 @@
+[
+  "apps/web/public/version.json",
+  "apps/web/src/app/App.test.tsx",
+  "apps/web/src/app/TaskCardContent.tsx",
+  "apps/web/src/app/TaskCardDialog.tsx",
+  "apps/web/src/app/TaskDetailsDialog.test.tsx",
+  "apps/web/src/app/TaskDetailsDialog.tsx",
+  "apps/web/src/app/TaskEditorDialog.tsx",
+  "apps/web/src/app/TaskTagFields.tsx",
+  "apps/web/src/app/use-dialog-motion.ts",
+  "apps/web/src/task-details.css",
+  "scripts/qa-task-card.cjs",
+  "scripts/task-card-modal-release-files.json",
+  "docs/operations/task-card-editor-modals.md"
+]

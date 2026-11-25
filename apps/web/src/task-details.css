@@ -98,23 +98,24 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.task-details-dialog :is(button, input, select, textarea) {
+:is(.task-details-dialog, .task-editor-dialog)
+  :is(button, input, select, textarea) {
   min-height: 44px;
 }
-.task-details-dialog button {
+:is(.task-details-dialog, .task-editor-dialog) button {
   cursor: pointer;
 }
-.task-details-dialog button:disabled {
+:is(.task-details-dialog, .task-editor-dialog) button:disabled {
   cursor: default;
 }
-.task-details-dialog :is(label, form) {
+:is(.task-details-dialog, .task-editor-dialog) :is(label, form) {
   min-width: 0;
 }
-.task-details-dialog form label {
+:is(.task-details-dialog, .task-editor-dialog) form label {
   display: grid;
   gap: 8px;
 }
-.task-details-dialog textarea {
+:is(.task-details-dialog, .task-editor-dialog) textarea {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
@@ -184,7 +185,7 @@
   padding-bottom: 12px;
   border-bottom: 1px solid #c9cfc1;
 }
-.task-details-dialog :focus-visible {
+:is(.task-details-dialog, .task-editor-dialog) :focus-visible {
   outline: 3px solid var(--color-accent);
   outline-offset: 3px;
 }
@@ -193,10 +194,40 @@
   overflow-wrap: anywhere;
 }
 @media (min-width: 640px) {
+  .task-dialog.task-editor-dialog {
+    width: calc(100% - 48px);
+    max-width: 600px;
+  }
   .task-dialog.task-details-dialog {
     width: calc(100% - 48px);
     max-width: 1040px;
   }
+}
+.task-editor-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+}
+.task-editor-dialog {
+  background: var(--glass-fallback);
+}
+.task-editor-dialog .card-checklist-editor {
+  margin-top: 0;
+}
+.task-editor-dialog form label {
+  font-size: 1rem;
+}
+.task-editor-dialog .card-editor-actions {
+  position: sticky;
+  bottom: -20px;
+  padding: 12px 0 20px;
+  background: var(--glass-fallback);
+  border-top: 1px solid #c9cfc1;
+}
+.task-editor-dialog .task-dialog-heading h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 @media (min-width: 960px) {
   .task-details-layout {

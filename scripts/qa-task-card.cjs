@@ -162,11 +162,95 @@ function contrast(a, b) {
           });
         }
       }
+      const editorChecks = [];
+      for (const [index, title] of [
+        "Agendamento",
+        "Agendamento",
+        "Editar responsável",
+        "Editar tags",
+        "Visibilidade do cartão",
+      ].entries()) {
+        const trigger = dialog.locator(".card-properties > button").nth(index);
+        const before = await dialog.locator(".card-properties").boundingBox();
+        await trigger.click();
+        const editor = page.getByRole("dialog", { name: title, exact: true });
+        await editor.waitFor();
+        assert.equal(await dialog.locator("form").count(), 0);
+        assert.equal(
+          await editor.evaluate((el) =>
+            document.querySelector(".task-details-dialog").contains(el),
+          ),
+          false,
+        );
+        const bounds = await editor.boundingBox();
+        assert.ok(
+          bounds.x >= 0 &&
+            bounds.x + bounds.width <= width + 1 &&
+            bounds.y >= 0 &&
+            bounds.y + bounds.height <= height + 1,
+        );
+        const overflow = await editor
+          .locator(".task-editor-content")
+          .evaluate((s) => s.scrollWidth > s.clientWidth);
+        assert.equal(overflow, false);
+        const after = await dialog.locator(".card-properties").boundingBox();
+        assert.equal(after.height, before.height);
+        await page.screenshot({
+          path: path.join(output, `${width}x${height}-editor-${index}.png`),
+        });
+        if (process.env.GABIO_AXE_MODULE) {
+          const violations = await page.evaluate(async () =>
+            (
+              await axe.run(
+                document.querySelector(".task-editor-dialog[open]"),
+                {
+                  runOnly: {
+                    type: "tag",
+                    values: ["wcag2a", "wcag2aa", "wcag21aa"],
+                  },
+                },
+              )
+            ).violations.map((v) => ({
+              id: v.id,
+              nodes: v.nodes.map((n) => n.target),
+            })),
+          );
+          assert.deepEqual(violations, []);
+        }
+        await editor
+          .getByRole("button", {
+            name: "Fechar " + title.toLocaleLowerCase("pt-BR"),
+            exact: true,
+          })
+          .focus();
+        await page.keyboard.press("Tab");
+        assert.equal(
+          await editor.evaluate((el) => el.contains(document.activeElement)),
+          true,
+        );
+        await page.keyboard.press("Escape");
+        await editor.waitFor({ state: "hidden" });
+        await page.waitForFunction(
+          (idx) =>
+            document.activeElement ===
+            document.querySelectorAll(".card-properties > button")[idx],
+          index,
+        );
+        assert.equal(await dialog.isVisible(), true);
+        editorChecks.push({ title, bounds, overflow });
+      }
       await dialog.getByRole("button", { name: "Editar observações" }).click();
-      await dialog
+      const notesEditor = page.getByRole("dialog", {
+        name: "Editar observações",
+        exact: true,
+      });
+      await notesEditor
         .getByRole("textbox", { name: "Observações" })
         .fill("Orientação sintética revisada\nConferir todos os materiais.");
-      await dialog.getByRole("button", { name: "Salvar observações" }).click();
+      await notesEditor
+        .getByRole("button", { name: "Salvar observações" })
+        .click();
+      await notesEditor.waitFor({ state: "hidden" });
       await dialog
         .getByText("Orientação sintética revisada", { exact: false })
         .waitFor();
@@ -176,25 +260,32 @@ function contrast(a, b) {
         .click();
       await dialog.getByText("2 de 3 concluídos", { exact: true }).waitFor();
       await dialog.getByRole("button", { name: "Adicionar checklist" }).click();
-      await dialog
+      const checklistEditor = page.getByRole("dialog", {
+        name: "Nova checklist",
+        exact: true,
+      });
+      await checklistEditor
         .getByRole("textbox", { name: "Nome da checklist" })
         .fill("Conferência sintética");
-      await dialog
+      await checklistEditor
         .getByRole("button", { name: "Adicionar item", exact: true })
         .click();
-      await dialog
+      await checklistEditor
         .getByRole("textbox", { name: "Item 1", exact: true })
         .fill("Verificar medidas");
-      await dialog
+      await checklistEditor
         .getByRole("button", { name: "Adicionar item", exact: true })
         .click();
-      await dialog
+      await checklistEditor
         .getByRole("textbox", { name: "Item 2", exact: true })
         .fill("Conferir quantidade");
-      await dialog
+      await checklistEditor
         .getByRole("button", { name: "Mover item 2 para cima" })
         .click();
-      await dialog.getByRole("button", { name: "Salvar checklist" }).click();
+      await checklistEditor
+        .getByRole("button", { name: "Salvar checklist" })
+        .click();
+      await checklistEditor.waitFor({ state: "hidden" });
       await dialog
         .getByRole("heading", { name: "Conferência sintética" })
         .waitFor();
@@ -211,10 +302,17 @@ function contrast(a, b) {
         /Conferir quantidade/,
       );
       await dialog.getByRole("button", { name: "Editar título" }).click();
-      await dialog
+      const titleEditor = page.getByRole("dialog", {
+        name: "Editar título",
+        exact: true,
+      });
+      await titleEditor
         .getByRole("textbox", { name: "Título", exact: true })
         .fill("Cartão sintético revisado");
-      await dialog.getByRole("button", { name: "Salvar alteração" }).click();
+      await titleEditor
+        .getByRole("button", { name: "Salvar alteração" })
+        .click();
+      await titleEditor.waitFor({ state: "hidden" });
       await dialog
         .getByRole("button", { name: "Editar título" })
         .filter({ hasText: "Cartão sintético revisado" })
@@ -288,6 +386,7 @@ function contrast(a, b) {
       }
       report.viewports.push({
         ...geometry,
+        editorChecks,
         accessibility,
         fallbackAccessibility,
         contrastSamples,

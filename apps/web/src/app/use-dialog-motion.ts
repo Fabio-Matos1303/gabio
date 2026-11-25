@@ -47,12 +47,29 @@ export function useDialogMotion(
       if (dialog.open) dialog.close();
       unlockScroll(dialog);
       // Never move focus into a hidden route, or out of a newly opened dialog.
-      if (
-        trigger?.isConnected &&
-        !trigger.closest("[hidden], [inert]") &&
-        !document.querySelector("dialog[open]")
-      )
-        trigger.focus({ preventScroll: true });
+      const returnTarget = trigger;
+      const restoreFocus = () => {
+        const topDialog = Array.from(
+          document.querySelectorAll("dialog[open]"),
+        ).at(-1);
+        if (
+          returnTarget?.isConnected &&
+          !returnTarget.closest("[hidden], [inert], dialog:not([open])") &&
+          !returnTarget.matches(":disabled") &&
+          (!topDialog || topDialog.contains(returnTarget))
+        ) {
+          returnTarget.focus({ preventScroll: true });
+          return true;
+        }
+        return false;
+      };
+      // Wait for the owner's state update to re-enable the trigger. Closing a
+      // child must return to its card, while a new top modal keeps its focus.
+      if (!restoreFocus()) {
+        if (typeof window.requestAnimationFrame === "function")
+          window.requestAnimationFrame(restoreFocus);
+        else window.setTimeout(restoreFocus, 0);
+      }
       trigger = null;
     };
     const complete = () => {
@@ -89,8 +106,8 @@ export function useDialogMotion(
         dialog.showModal();
         lockScroll(dialog);
         dialog
-          .querySelector<HTMLInputElement>(
-            'input[name="title"]:not(:disabled), input[name="search"]:not(:disabled)',
+          .querySelector<HTMLElement>(
+            '[data-dialog-autofocus]:not(:disabled), input[name="title"]:not(:disabled), input[name="search"]:not(:disabled)',
           )
           ?.focus({ preventScroll: true });
       },

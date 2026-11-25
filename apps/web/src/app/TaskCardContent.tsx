@@ -9,6 +9,8 @@ import {
 } from "@gabio/contracts";
 import type { AppGateway } from "../lib/app-gateway.js";
 import { GatewayError } from "../lib/app-gateway.js";
+import { TaskEditorDialog } from "./TaskEditorDialog.js";
+import { DialogCloseButton } from "./TaskCardDialog.js";
 import {
   syncCardCommandQueue,
   type QueuedCardCommand,
@@ -20,6 +22,7 @@ export function TaskCardContentPanel({
   userId,
   householdId,
   readOnly,
+  blocked = false,
   gateway,
   onChanged,
   onDirtyChange,
@@ -29,6 +32,7 @@ export function TaskCardContentPanel({
   userId: string;
   householdId: string;
   readOnly: boolean;
+  blocked?: boolean;
   gateway: AppGateway;
   onChanged: () => Promise<unknown>;
   onDirtyChange: (dirty: boolean) => void;
@@ -40,8 +44,11 @@ export function TaskCardContentPanel({
   const [entries, setEntries] = useState<QueuedCardCommand[]>([]);
   const [notes, setNotes] = useState<string | null>(null);
   const [notesEditVersion, setNotesEditVersion] = useState(0);
+  const [notesBaseline, setNotesBaseline] = useState("");
   const [editor, setEditor] = useState<TaskChecklist | null>(null);
   const [newList, setNewList] = useState(false);
+  const [editorBaseline, setEditorBaseline] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
   const context = useMemo(
     () => ({ userId, householdId }),
     [userId, householdId],
@@ -114,7 +121,7 @@ export function TaskCardContentPanel({
     };
   }, [load, onChanged]);
   async function send(value: TaskCardCommand) {
-    if (lock.current || readOnly || entries.length) return;
+    if (lock.current || readOnly || blocked || entries.length) return;
     const parsed = taskCardCommandSchema.safeParse(value);
     if (!parsed.success) {
       setError(
@@ -170,21 +177,16 @@ export function TaskCardContentPanel({
       if (current.current) setBusy(false);
     }
   }
-  const disabled = busy || readOnly || entries.length > 0;
-  const discardDraft = () => {
-    if (window.confirm("Descartar as alterações deste editor?")) {
-      setNotes(null);
-      setEditor(null);
-      setNewList(false);
-    }
+  const disabled = busy || readOnly || blocked || entries.length > 0;
+  const closeDraft = () => {
+    setNotes(null);
+    setEditor(null);
+    setNewList(false);
+    setDeleteConfirm(false);
+    setError("");
   };
-  if (!gateway.readTaskCard || !gateway.executeTaskCardCommand)
-    return <p>Os detalhes adicionais não estão disponíveis nesta conexão.</p>;
-  return (
-    <div className="card-content">
-      {error && <p role="alert">{error}</p>}
-      {busy && content && <p role="status">Confirmando alteração…</p>}
-      {!content && !error && <p role="status">Carregando detalhes…</p>}
+  const queueFeedback = (
+    <>
       {(error || entries.length > 0) && (
         <button
           type="button"
@@ -218,17 +220,30 @@ export function TaskCardContentPanel({
           )}
         </div>
       ))}
+    </>
+  );
+  if (!gateway.readTaskCard || !gateway.executeTaskCardCommand)
+    return <p>Os detalhes adicionais não estão disponíveis nesta conexão.</p>;
+  return (
+    <div className="card-content">
+      {error && !dirty && <p role="alert">{error}</p>}
+      {busy && content && <p role="status">Confirmando alteração…</p>}
+      {!content && !error && <p role="status">Carregando detalhes…</p>}
+      {!dirty && queueFeedback}
       {content && (
         <>
           <section aria-label="Observações" className="card-content-section">
             <div className="card-section-heading">
               <h3>Observações</h3>
-              {notes === null && !readOnly && (
+              {!readOnly && (
                 <button
                   type="button"
-                  disabled={disabled || editor !== null}
+                  disabled={disabled || dirty}
+                  aria-haspopup="dialog"
                   onClick={() => {
+                    setError("");
                     setNotesEditVersion(content.notesVersion);
+                    setNotesBaseline(content.notes);
                     setNotes(content.notes);
                   }}
                 >
@@ -236,45 +251,54 @@ export function TaskCardContentPanel({
                 </button>
               )}
             </div>
-            {notes === null ? (
-              <p className="card-notes">
-                {content.notes ||
-                  "Adicione orientações ou informações úteis para esta tarefa."}
-              </p>
-            ) : (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void send({
-                    commandId: crypto.randomUUID(),
-                    type: "save_notes",
-                    payload: {
-                      taskId,
-                      expectedVersion: notesEditVersion,
-                      notes,
-                    },
-                  });
-                }}
+            <p className="card-notes">
+              {content.notes ||
+                "Adicione orientações ou informações úteis para esta tarefa."}
+            </p>
+            {notes !== null && (
+              <TaskEditorDialog
+                title="Editar observações"
+                busy={busy}
+                dirty={notes !== notesBaseline}
+                onClose={closeDraft}
               >
-                <label>
-                  Observações
-                  <textarea
-                    value={notes}
-                    maxLength={10000}
-                    rows={6}
-                    disabled={disabled}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </label>
-                <div className="card-editor-actions">
-                  <button className="primary-button" disabled={disabled}>
-                    Salvar observações
-                  </button>
-                  <button type="button" disabled={busy} onClick={discardDraft}>
-                    Cancelar
-                  </button>
-                </div>
-              </form>
+                {queueFeedback}
+                {error && <p role="alert">{error}</p>}
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void send({
+                      commandId: crypto.randomUUID(),
+                      type: "save_notes",
+                      payload: {
+                        taskId,
+                        expectedVersion: notesEditVersion,
+                        notes,
+                      },
+                    });
+                  }}
+                >
+                  <label>
+                    Observações
+                    <textarea
+                      data-dialog-autofocus
+                      value={notes}
+                      maxLength={10000}
+                      rows={6}
+                      disabled={disabled}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+                  </label>
+                  <div className="card-editor-actions">
+                    <button className="primary-button" disabled={disabled}>
+                      Salvar observações
+                    </button>
+                    <DialogCloseButton disabled={busy}>
+                      Cancelar
+                    </DialogCloseButton>
+                  </div>
+                </form>
+              </TaskEditorDialog>
             )}
           </section>
           <section aria-label="Checklists" className="card-content-section">
@@ -283,24 +307,29 @@ export function TaskCardContentPanel({
               {!readOnly && (
                 <button
                   type="button"
+                  aria-haspopup="dialog"
                   disabled={
                     disabled || dirty || content.checklists.length >= 20
                   }
                   onClick={() => {
+                    setError("");
+                    setDeleteConfirm(false);
                     setNewList(true);
-                    setEditor({
+                    const draft = {
                       id: crypto.randomUUID(),
                       title: "",
                       version: 0,
                       items: [],
-                    });
+                    };
+                    setEditorBaseline(JSON.stringify(draft));
+                    setEditor(draft);
                   }}
                 >
                   Adicionar checklist
                 </button>
               )}
             </div>
-            {content.checklists.length === 0 && !editor && (
+            {content.checklists.length === 0 && (
               <p>Nenhuma checklist adicionada.</p>
             )}
             {content.checklists.map((list) => (
@@ -314,9 +343,13 @@ export function TaskCardContentPanel({
                   {!readOnly && (
                     <button
                       type="button"
+                      aria-haspopup="dialog"
                       disabled={disabled || dirty}
                       onClick={() => {
+                        setError("");
+                        setDeleteConfirm(false);
                         setNewList(false);
+                        setEditorBaseline(JSON.stringify(list));
                         setEditor(structuredClone(list));
                       }}
                     >
@@ -367,34 +400,39 @@ export function TaskCardContentPanel({
               </section>
             ))}
             {editor && (
-              <ChecklistEditor
-                key={editor.id}
-                list={editor}
-                disabled={disabled}
-                onChange={setEditor}
-                onCancel={discardDraft}
-                onSave={() =>
-                  void send({
-                    commandId: crypto.randomUUID(),
-                    type: "save_checklist",
-                    payload: {
-                      taskId,
-                      checklistId: editor.id,
-                      expectedVersion: editor.version,
-                      title: editor.title,
-                      items: editor.items,
-                    },
-                  })
+              <TaskEditorDialog
+                title={
+                  deleteConfirm
+                    ? "Excluir checklist?"
+                    : newList
+                      ? "Nova checklist"
+                      : "Editar checklist"
                 }
-                onDelete={
-                  newList
-                    ? undefined
-                    : () => {
-                        if (
-                          window.confirm(
-                            `Excluir a checklist “${editor.title}” e todos os seus itens?`,
-                          )
-                        )
+                busy={busy}
+                dirty={JSON.stringify(editor) !== editorBaseline}
+                onClose={closeDraft}
+              >
+                {queueFeedback}
+                {error && <p role="alert">{error}</p>}
+                {deleteConfirm ? (
+                  <section aria-label="Confirmar exclusão da checklist">
+                    <p>
+                      A checklist “{editor.title}” e todos os seus itens serão
+                      removidos. O rascunho desta lista também será descartado.
+                    </p>
+                    <div className="card-editor-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setDeleteConfirm(false)}
+                      >
+                        Manter checklist
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        disabled={disabled}
+                        onClick={() =>
                           void send({
                             commandId: crypto.randomUUID(),
                             type: "delete_checklist",
@@ -403,10 +441,38 @@ export function TaskCardContentPanel({
                               checklistId: editor.id,
                               expectedVersion: editor.version,
                             },
-                          });
-                      }
-                }
-              />
+                          })
+                        }
+                      >
+                        Excluir checklist
+                      </button>
+                    </div>
+                  </section>
+                ) : (
+                  <ChecklistEditor
+                    key={editor.id}
+                    list={editor}
+                    disabled={disabled}
+                    onChange={setEditor}
+                    onSave={() =>
+                      void send({
+                        commandId: crypto.randomUUID(),
+                        type: "save_checklist",
+                        payload: {
+                          taskId,
+                          checklistId: editor.id,
+                          expectedVersion: editor.version,
+                          title: editor.title,
+                          items: editor.items,
+                        },
+                      })
+                    }
+                    onDelete={
+                      newList ? undefined : () => setDeleteConfirm(true)
+                    }
+                  />
+                )}
+              </TaskEditorDialog>
             )}
           </section>
         </>
@@ -420,14 +486,12 @@ function ChecklistEditor({
   disabled,
   onChange,
   onSave,
-  onCancel,
   onDelete,
 }: {
   list: TaskChecklist;
   disabled: boolean;
   onChange: (list: TaskChecklist) => void;
   onSave: () => void;
-  onCancel: () => void;
   onDelete?: (() => void) | undefined;
 }) {
   function patch(id: string, fields: Partial<ChecklistItem>) {
@@ -451,10 +515,10 @@ function ChecklistEditor({
       }}
     >
       <fieldset disabled={disabled}>
-        <legend>Editar checklist</legend>
         <label>
           Nome da checklist
           <input
+            data-dialog-autofocus
             required
             maxLength={120}
             value={list.title}
@@ -521,9 +585,7 @@ function ChecklistEditor({
         </button>
         <div className="card-editor-actions">
           <button className="primary-button">Salvar checklist</button>
-          <button type="button" onClick={onCancel}>
-            Cancelar
-          </button>
+          <DialogCloseButton>Cancelar</DialogCloseButton>
           {onDelete && (
             <button type="button" onClick={onDelete}>
               Excluir checklist

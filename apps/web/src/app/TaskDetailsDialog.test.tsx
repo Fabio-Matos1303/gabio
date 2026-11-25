@@ -68,6 +68,23 @@ function setup() {
   return { props, read, execute };
 }
 describe("task details", () => {
+  it("protects tag chip removal when cancelling the modal", async () => {
+    const { props } = setup();
+    render(<TaskDetailsDialog {...props} task={{ ...task, tags: ["Casa"] }} />);
+    await screen.findByText("Texto inicial");
+    fireEvent.click(screen.getByRole("button", { name: /^Tags/ }));
+    const editor = within(screen.getByRole("dialog", { name: "Editar tags" }));
+    fireEvent.click(editor.getByRole("button", { name: "Remover tag Casa" }));
+    fireEvent.click(editor.getByRole("button", { name: "Cancelar edição" }));
+    expect(
+      screen.getByRole("dialog", { name: "Descartar alterações?" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(
+      screen.queryByRole("button", { name: "Remover tag Casa" }),
+    ).not.toBeInTheDocument();
+    expect(props.onUpdate).not.toHaveBeenCalled();
+  });
   it("saves only the edited field using the version captured before a remote refresh", async () => {
     const { props } = setup();
     const view = render(<TaskDetailsDialog {...props} />);
@@ -169,16 +186,38 @@ describe("task details", () => {
   });
   it("guards closing an active draft and keeps completed cards read only", async () => {
     const { props } = setup();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     const view = render(<TaskDetailsDialog {...props} />);
     await screen.findByText("Texto inicial");
     fireEvent.click(screen.getByRole("button", { name: "Editar título" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Fechar editar tarefa" }),
+    const titleDialog = screen.getByRole("dialog", { name: "Editar título" });
+    fireEvent.change(
+      within(titleDialog).getByRole("textbox", { name: "Título" }),
+      { target: { value: "Rascunho preservado" } },
     );
-    expect(confirm).toHaveBeenCalled();
+    fireEvent.click(
+      within(titleDialog).getByRole("button", { name: "Fechar editar título" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Descartar alterações?" }),
+    ).toBeInTheDocument();
     expect(props.onClose).not.toHaveBeenCalled();
-    confirm.mockRestore();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(screen.getByRole("textbox", { name: "Título" })).toHaveValue(
+      "Rascunho preservado",
+    );
+    fireEvent(
+      titleDialog,
+      new Event("cancel", { bubbles: true, cancelable: true }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Descartar alterações" }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Editar título" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Editar tarefa" }),
+    ).toBeInTheDocument();
     view.unmount();
     render(
       <TaskDetailsDialog
@@ -199,4 +238,34 @@ describe("task details", () => {
       dialog.queryByRole("button", { name: "Adicionar checklist" }),
     ).not.toBeInTheDocument();
   });
+  it.each([
+    [/^Prazo/, "Agendamento", "Prazo"],
+    [/^Recorrência/, "Agendamento", "Repetir"],
+    [/^Responsável/, "Editar responsável", "Responsável"],
+    [/^Tags/, "Editar tags", "Buscar ou criar tag"],
+    [/^Mais opções/, "Visibilidade do cartão", "Quem pode ver"],
+  ] as const)(
+    "opens property %s in a separate dialog",
+    async (trigger, title, label) => {
+      const { props } = setup();
+      render(<TaskDetailsDialog {...props} />);
+      await screen.findByText("Texto inicial");
+      const card = screen.getByRole("dialog", { name: "Editar tarefa" });
+      fireEvent.click(within(card).getByRole("button", { name: trigger }));
+      const editor = screen.getByRole("dialog", { name: title });
+      expect(card.querySelector("form")).toBeNull();
+      expect(card.contains(editor)).toBe(false);
+      expect(within(editor).getByLabelText(label)).toBeInTheDocument();
+      fireEvent.click(
+        within(editor).getByRole("button", { name: "Cancelar edição" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: title }),
+        ).not.toBeInTheDocument(),
+      );
+      expect(props.onUpdate).not.toHaveBeenCalled();
+      expect(props.onClose).not.toHaveBeenCalled();
+    },
+  );
 });

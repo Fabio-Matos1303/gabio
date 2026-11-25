@@ -38,6 +38,7 @@ export function TaskCardDialog({
   const id = useId();
   const dismiss = useDialogMotion(ref, open, busy, onClose);
   const requestClose = () => {
+    if (busy) return;
     if (!canClose || canClose()) dismiss();
   };
   return (
@@ -46,6 +47,11 @@ export function TaskCardDialog({
       className={`task-dialog glass-surface ${className}`}
       aria-labelledby={id}
       onKeyDown={(event) => {
+        if (
+          (event.target as HTMLElement).closest("dialog") !==
+          event.currentTarget
+        )
+          return;
         if (event.key !== "Tab") return;
         const controls = Array.from(
           event.currentTarget.querySelectorAll<HTMLElement>(
@@ -68,6 +74,7 @@ export function TaskCardDialog({
         }
       }}
       onCancel={(e) => {
+        e.stopPropagation();
         e.preventDefault();
         requestClose();
       }}
