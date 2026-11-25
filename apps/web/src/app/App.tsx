@@ -1,4 +1,5 @@
 import { TaskIcon } from "./TaskIcon.js";
+import { useKeyboardViewport } from "./use-keyboard-viewport.js";
 import { taskPriorityLabels } from "../lib/task-priority.js";
 import { TaskDetailsDialog } from "./TaskDetailsDialog.js";
 import {
@@ -1472,6 +1473,7 @@ function ExistingHouseholdInvitation({
 }
 
 export function App({ gateway = defaultGateway }: AppProps) {
+  useKeyboardViewport();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [household, setHousehold] = useState<HouseholdContext | null>(null);

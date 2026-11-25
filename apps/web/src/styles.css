@@ -32,6 +32,20 @@
   display: none !important;
 }
 
+/* Keep the editing area clear while the software keyboard reduces the viewport. */
+:root[data-keyboard-open] .bottom-nav {
+  display: none;
+}
+
+:is(input, textarea, [contenteditable="true"]) {
+  scroll-margin-block: 12px;
+}
+
+textarea {
+  max-height: max(48px, calc(var(--visible-viewport-height, 100dvh) - 240px));
+  overflow-y: auto;
+}
+
 body {
   margin: 0;
   min-width: 320px;
