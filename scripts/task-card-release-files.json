@@ -1,4 +1,5 @@
 [
+  ".gitattributes",
   "apps/web/src/app/App.tsx",
   "apps/web/src/app/App.test.tsx",
   "apps/web/src/app/TaskCardDialog.tsx",

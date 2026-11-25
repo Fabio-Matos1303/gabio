@@ -38,6 +38,8 @@ original de QA. Os delimitadores transacionais internos foram removidos: a
 publicação tem apenas um BEGIN/COMMIT, sem exposição do gateway intermediário.
 O nome do arquivo foi alinhado ao timestamp retornado pelo Supabase, sem alterar
 o conteúdo SQL aplicado. Nenhuma migration previamente publicada foi modificada.
+O checkout das migrations exige LF em `.gitattributes`, preservando também no
+Windows os hashes de fonte conferidos pelos guards.
 
 SHA-256 revisado e aplicado:
 `b2326df5750f47fc35ad6a4375ffb0622ebce50a58ee2f4ca07f7bb0f516acfb`.
