@@ -4,6 +4,8 @@ export const visibilitySchema = z.enum(["household", "private"]);
 export type Visibility = z.infer<typeof visibilitySchema>;
 export const taskKindSchema = z.enum(["task", "event"]);
 export type TaskKind = z.infer<typeof taskKindSchema>;
+export const taskPrioritySchema = z.enum(["low", "medium", "high"]);
+export type TaskPriority = z.infer<typeof taskPrioritySchema>;
 
 function validateTaskKind(
   item: {
@@ -182,12 +184,18 @@ const taskUpdatePayloadSchema = taskMutableFieldsSchema
   .extend({
     taskId: z.string().uuid(),
     expectedVersion: z.number().int().positive(),
+    priority: taskPrioritySchema.optional(),
   })
   .strict()
   .refine(
     ({ taskId: _taskId, expectedVersion: _expectedVersion, ...changes }) =>
       Object.keys(changes).length > 0,
     { message: "at least one task field must be updated" },
+  )
+  .refine(
+    (payload) =>
+      payload.priority === undefined || Object.keys(payload).length === 3,
+    { message: "priority must be updated independently" },
   );
 
 export const taskCreateCommandSchema = z
@@ -243,6 +251,7 @@ import { taskCardSummarySchema } from "./task-card.js";
 
 export const taskSchema = z
   .object({
+    priority: taskPrioritySchema.optional(),
     kind: taskKindSchema.optional(),
     eventEndsAt: z.string().datetime({ offset: true }).nullable().optional(),
     id: z.string().uuid(),

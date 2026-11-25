@@ -26,6 +26,32 @@ const command: TaskGatewayCommand = {
 };
 
 describe("task command queue", () => {
+  it("retries a priority command with the same id after an unknown response", async () => {
+    const queue = new MemoryTaskCommandQueue();
+    const priorityCommand: TaskGatewayCommand = {
+      commandId: command.commandId,
+      type: "update",
+      payload: {
+        taskId: "40000000-0000-4000-8000-000000000001",
+        expectedVersion: 1,
+        priority: "high",
+      },
+    };
+    await queue.put(contextA, priorityCommand);
+    const executeTaskCommand = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce(undefined);
+    const gateway = { executeTaskCommand } as unknown as AppGateway;
+    await syncTaskCommandQueue(queue, gateway, contextA, () => true);
+    expect((await queue.list(contextA))[0]?.command).toEqual(priorityCommand);
+    await syncTaskCommandQueue(queue, gateway, contextA, () => true);
+    expect(executeTaskCommand.mock.calls.map((args) => args[0])).toEqual([
+      priorityCommand,
+      priorityCommand,
+    ]);
+    expect(await queue.list(contextA)).toEqual([]);
+  });
   it("does not send a task mutation while its card content is pending", async () => {
     const queue = new MemoryTaskCommandQueue();
     await queue.put(contextA, {

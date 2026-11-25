@@ -44,6 +44,29 @@ const external: ExternalItem = {
   tags: [],
 };
 describe("task views", () => {
+  it("combines local priority with tags and excludes external unknown priorities", () => {
+    const items = viewItems(
+      [
+        task({ priority: "high" }),
+        task({ id: "10000000-0000-4000-8000-000000000002", priority: "low" }),
+      ],
+      [external],
+    );
+    expect(
+      selectViewItems(items, {
+        ...initialTaskFilters,
+        priority: "high",
+        tags: ["Casa"],
+      }).map((i) => i.id),
+    ).toEqual([base.id]);
+    expect(
+      selectViewItems(viewItems([task()], [external]), {
+        ...initialTaskFilters,
+        priority: "medium",
+      }).map((i) => i.id),
+    ).toEqual([base.id]);
+    expect(selectViewItems(items, initialTaskFilters)).toHaveLength(3);
+  });
   it("uses household date across UTC midnight without moving Google civil dates", () => {
     expect(householdDate(new Date("2026-11-03T01:00:00Z"))).toBe("2026-11-02");
     expect(viewItems([task()], [external]).map((i) => i.date)).toEqual([

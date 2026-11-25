@@ -68,6 +68,70 @@ function setup() {
   return { props, read, execute };
 }
 describe("task details", () => {
+  it("includes the empty tag action text in its accessible name", async () => {
+    const { props } = setup();
+    render(<TaskDetailsDialog {...props} />);
+    await screen.findByText("Texto inicial");
+    expect(
+      screen.getByRole("button", { name: "Tags: Adicionar tag" }),
+    ).toHaveTextContent("Adicionar tag");
+  });
+  it("shows tags and metadata values without repeated visible field labels", async () => {
+    const { props } = setup();
+    render(
+      <TaskDetailsDialog
+        {...props}
+        task={{ ...task, tags: ["Casa"], assigneeUserId: userId }}
+      />,
+    );
+    await screen.findByText("Texto inicial");
+    const metadata = within(
+      screen.getByRole("group", { name: "Propriedades do cartão" }),
+    );
+    expect(
+      metadata.getByRole("button", { name: "Tags Casa" }),
+    ).toHaveTextContent("Casa");
+    expect(
+      metadata.getByRole("button", { name: "Responsável Pessoa A" }),
+    ).toHaveTextContent("Pessoa A");
+    for (const label of [
+      "Tags",
+      "Responsável",
+      "Prioridade",
+      "Prazo",
+      "Recorrência",
+    ])
+      expect(
+        metadata.queryByText(label, { exact: true }),
+      ).not.toBeInTheDocument();
+    fireEvent.click(metadata.getByRole("button", { name: "Tags Casa" }));
+    expect(
+      screen.getByRole("dialog", { name: "Editar tags" }),
+    ).toBeInTheDocument();
+  });
+  it("saves only priority and retains the version captured before a refresh", async () => {
+    const { props } = setup();
+    const view = render(<TaskDetailsDialog {...props} />);
+    await screen.findByText("Texto inicial");
+    fireEvent.click(screen.getByRole("button", { name: /^Prioridade/ }));
+    const editor = within(
+      screen.getByRole("dialog", { name: "Editar prioridade" }),
+    );
+    expect(editor.getByLabelText("Prioridade")).toHaveValue("medium");
+    fireEvent.change(editor.getByLabelText("Prioridade"), {
+      target: { value: "high" },
+    });
+    view.rerender(
+      <TaskDetailsDialog
+        {...props}
+        task={{ ...task, version: 2, priority: "low" }}
+      />,
+    );
+    fireEvent.click(editor.getByRole("button", { name: "Salvar" }));
+    await waitFor(() =>
+      expect(props.onUpdate).toHaveBeenCalledWith({ priority: "high" }, 1),
+    );
+  });
   it("protects tag chip removal when cancelling the modal", async () => {
     const { props } = setup();
     render(<TaskDetailsDialog {...props} task={{ ...task, tags: ["Casa"] }} />);
@@ -239,6 +303,7 @@ describe("task details", () => {
     ).not.toBeInTheDocument();
   });
   it.each([
+    [/^Prioridade/, "Editar prioridade", "Prioridade"],
     [/^Prazo/, "Agendamento", "Prazo"],
     [/^Recorrência/, "Agendamento", "Repetir"],
     [/^Responsável/, "Editar responsável", "Responsável"],

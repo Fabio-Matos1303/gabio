@@ -29,6 +29,24 @@ const task: Task = {
   updatedAt: "2026-10-28T12:00:00Z",
 };
 describe("task snapshots", () => {
+  it("projects a queued priority change without changing status or version", async () => {
+    const queue = new MemoryTaskCommandQueue();
+    await queue.put(context, {
+      commandId: "50000000-0000-4000-8000-000000000001",
+      type: "update",
+      payload: {
+        taskId: task.id,
+        expectedVersion: task.version,
+        priority: "high",
+      },
+    });
+    expect(
+      projectTaskCommands([task], await queue.list(context), context)[0],
+    ).toMatchObject({ priority: "high", status: "open", version: 1 });
+    expect(
+      projectTaskCommands([task], await queue.list(context), other),
+    ).toEqual([]);
+  });
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();

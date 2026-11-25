@@ -23,6 +23,7 @@ import {
 } from "../lib/task-views.js";
 import { parseTagInput } from "./TaskTagFields.js";
 import "../task-views.css";
+import { taskPriorityLabels } from "../lib/task-priority.js";
 
 export function TaskViews({
   tasks,
@@ -251,6 +252,7 @@ export function TaskViews({
     Number(filters.assignee !== "all") +
     Number(filters.visibility !== "all") +
     Number(filters.recurrence !== "all") +
+    Number(filters.priority !== "all") +
     Number(filters.tags.length > 0 || filters.tagMode === "none") +
     Number(filters.sources.length !== 3 || filters.sourceIds.length > 0);
   const visibleItems =
@@ -290,6 +292,12 @@ export function TaskViews({
       key: "visibility",
       label: filters.visibility === "private" ? "Somente eu" : "Da casa",
       clear: () => patch({ visibility: "all" }),
+    });
+  if (filters.priority !== "all")
+    chips.push({
+      key: "priority",
+      label: `Prioridade: ${taskPriorityLabels[filters.priority as keyof typeof taskPriorityLabels]} (Gabio)`,
+      clear: () => patch({ priority: "all" }),
     });
   if (filters.recurrence !== "all")
     chips.push({
@@ -668,6 +676,20 @@ export function TaskViews({
                 <option value="all">Todas</option>
                 <option value="household">Da casa</option>
                 <option value="private">Somente eu</option>
+              </select>
+            </label>
+            <label>
+              Prioridade (Gabio)
+              <select
+                value={filters.priority}
+                onChange={(e) => patch({ priority: e.target.value })}
+              >
+                <option value="all">Todas</option>
+                {Object.entries(taskPriorityLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </label>
             <label>

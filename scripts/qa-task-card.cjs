@@ -164,10 +164,11 @@ function contrast(a, b) {
       }
       const editorChecks = [];
       for (const [index, title] of [
+        "Editar tags",
+        "Editar prioridade",
         "Agendamento",
         "Agendamento",
         "Editar responsável",
-        "Editar tags",
         "Visibilidade do cartão",
       ].entries()) {
         const trigger = dialog.locator(".card-properties > button").nth(index);
@@ -213,7 +214,7 @@ function contrast(a, b) {
         }));
         assert.equal(footerStyle.background, "rgba(0, 0, 0, 0)");
         assert.equal(footerStyle.justify, "flex-end");
-        if (index === 3) {
+        if (index === 0) {
           const legend = await editor
             .locator(".task-tag-fields > legend")
             .boundingBox();
@@ -266,6 +267,21 @@ function contrast(a, b) {
         assert.equal(await dialog.isVisible(), true);
         editorChecks.push({ title, bounds, overflow });
       }
+      await dialog.getByRole("button", { name: /^Prioridade/ }).click();
+      const priorityEditor = page.getByRole("dialog", {
+        name: "Editar prioridade",
+        exact: true,
+      });
+      await priorityEditor
+        .locator('select[name="priority"]')
+        .selectOption("high");
+      await priorityEditor
+        .getByRole("button", { name: "Salvar", exact: true })
+        .click();
+      await priorityEditor.waitFor({ state: "hidden" });
+      await dialog
+        .getByRole("button", { name: "Prioridade Alta", exact: true })
+        .waitFor();
       await dialog.getByRole("button", { name: "Editar observações" }).click();
       const notesEditor = page.getByRole("dialog", {
         name: "Editar observações",
@@ -405,6 +421,40 @@ function contrast(a, b) {
         assert.equal(overflow, false);
         await page.screenshot({ path: path.join(output, "360-text-200.png") });
       }
+      await dialog
+        .getByRole("button", { name: "Fechar editar tarefa", exact: true })
+        .click();
+      await dialog.waitFor({ state: "hidden" });
+      await page.getByRole("button", { name: /^Filtros/ }).click();
+      const filters = page.getByRole("dialog", {
+        name: "Filtrar tarefas e eventos",
+        exact: true,
+      });
+      await filters
+        .getByRole("combobox", { name: "Prioridade (Gabio)", exact: true })
+        .selectOption("high");
+      await filters
+        .getByRole("button", { name: /Mostrar .* resultado/ })
+        .click();
+      await filters.waitFor({ state: "hidden" });
+      await page
+        .getByRole("button", {
+          name: "Abrir cartão: Cartão sintético revisado",
+          exact: true,
+        })
+        .waitFor();
+      assert.equal(
+        await page
+          .getByRole("button", {
+            name: "Abrir cartão: Agendar manutenção preventiva",
+            exact: true,
+          })
+          .count(),
+        0,
+      );
+      await page.screenshot({
+        path: path.join(output, `${width}x${height}-priority-filter.png`),
+      });
       report.viewports.push({
         ...geometry,
         editorChecks,

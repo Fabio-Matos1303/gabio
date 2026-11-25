@@ -184,6 +184,7 @@ export type TaskFilters = {
   assignee: string;
   visibility: string;
   recurrence: string;
+  priority: string;
   tags: string[];
   tagMode: "any" | "all" | "none";
   sources: string[];
@@ -199,6 +200,7 @@ export const initialTaskFilters: TaskFilters = {
   assignee: "all",
   visibility: "all",
   recurrence: "all",
+  priority: "all",
   tags: [],
   tagMode: "any",
   sources: ["gabio", "google_tasks", "google_calendar"],
@@ -228,6 +230,11 @@ export function selectViewItems(
       return false;
     if (f.statuses.length && !f.statuses.includes(i.status)) return false;
     if (f.visibility !== "all" && i.visibility !== f.visibility) return false;
+    if (
+      f.priority !== "all" &&
+      (!i.task || (i.task.priority ?? "medium") !== f.priority)
+    )
+      return false;
     if (
       f.assignee !== "all" &&
       (i.source !== "gabio" ||

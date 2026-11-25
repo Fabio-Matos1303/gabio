@@ -529,7 +529,7 @@ export class SupabaseGateway implements AppGateway {
     const tasks = [];
     for (let offset = 0; offset <= 1000000; offset += 500) {
       const { data, error } = await this.configuredClient().rpc(
-        "list_tasks_page_v3",
+        "list_tasks_page_v4",
         { page_offset: offset },
       );
       if (error) throw friendlyError();
@@ -756,7 +756,9 @@ export class SupabaseGateway implements AppGateway {
   async executeTaskCommand(command: TaskGatewayCommand) {
     const parsed = taskGatewayCommandSchema.parse(command);
     const { data, error } = await this.configuredClient().rpc(
-      "execute_task_command",
+      parsed.type === "update" && parsed.payload.priority !== undefined
+        ? "execute_task_priority_command"
+        : "execute_task_command",
       {
         command_id: parsed.commandId,
         command: { type: parsed.type, payload: parsed.payload },

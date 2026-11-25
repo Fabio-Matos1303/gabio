@@ -44,6 +44,7 @@ let tasks: Task[] = [
     createdBy: user.id,
     assigneeUserId: user.id,
     title,
+    priority: index === 0 ? "medium" : "low",
     status,
     visibility: "household",
     recurrence: "none",
@@ -341,6 +342,7 @@ const gateway: AppGateway = {
       const fields =
         command.type === "update"
           ? {
+              priority: command.payload.priority ?? old.priority,
               tags: command.payload.tags ?? old.tags,
               title: command.payload.title ?? old.title,
               kind: command.payload.kind ?? old.kind,
@@ -353,8 +355,14 @@ const gateway: AppGateway = {
                   ? old.dueAt
                   : command.payload.dueAt,
               recurrence: command.payload.recurrence ?? old.recurrence,
-              recurrenceRule: command.payload.recurrenceRule ?? null,
-              assigneeUserId: command.payload.assigneeUserId ?? null,
+              recurrenceRule:
+                command.payload.recurrenceRule === undefined
+                  ? old.recurrenceRule
+                  : command.payload.recurrenceRule,
+              assigneeUserId:
+                command.payload.assigneeUserId === undefined
+                  ? old.assigneeUserId
+                  : command.payload.assigneeUserId,
               visibility: command.payload.visibility ?? old.visibility,
             }
           : {

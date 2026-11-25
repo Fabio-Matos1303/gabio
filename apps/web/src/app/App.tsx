@@ -1,4 +1,5 @@
 import { TaskIcon } from "./TaskIcon.js";
+import { taskPriorityLabels } from "../lib/task-priority.js";
 import { TaskDetailsDialog } from "./TaskDetailsDialog.js";
 import {
   createCardCommandQueue,
@@ -936,6 +937,14 @@ function TaskPanel({
           ))}
         </div>
         <div className="task-card-meta">
+          <span
+            className={`task-priority priority-${task.priority ?? "medium"}`}
+          >
+            Prioridade{" "}
+            {taskPriorityLabels[task.priority ?? "medium"].toLocaleLowerCase(
+              "pt-BR",
+            )}
+          </span>
           {task.cardSummary?.hasNotes && <span>Observações</span>}
           {!!task.cardSummary?.totalItems && (
             <span>

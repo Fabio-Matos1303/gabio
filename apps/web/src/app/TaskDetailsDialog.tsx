@@ -13,13 +13,16 @@ import type { AppGateway, HouseholdContext } from "../lib/app-gateway.js";
 import type { TagRecord } from "../lib/task-views.js";
 import type { CardCommandQueue } from "../lib/task-card-queue.js";
 import "../task-details.css";
+import { taskPriorityLabels } from "../lib/task-priority.js";
+import { TaskIcon } from "./TaskIcon.js";
 
 type Changes = Omit<
   ReturnType<typeof taskUpdateCommandSchema.parse>["payload"],
   "taskId" | "expectedVersion"
 >;
-type Section = "title" | "schedule" | "assignee" | "tags" | "more";
+type Section = "title" | "schedule" | "assignee" | "tags" | "more" | "priority";
 const editorTitles: Record<Section, string> = {
+  priority: "Editar prioridade",
   title: "Editar título",
   schedule: "Agendamento",
   assignee: "Editar responsável",
@@ -81,6 +84,8 @@ export function TaskDetailsDialog({
     setError("");
     const form = new FormData(event.currentTarget);
     const changes: Changes = {};
+    if (section === "priority")
+      changes.priority = form.get("priority") as Task["priority"];
     if (section === "title") changes.title = String(form.get("title") ?? "");
     if (section === "assignee")
       changes.assigneeUserId = String(form.get("assigneeUserId") ?? "") || null;
@@ -130,13 +135,45 @@ export function TaskDetailsDialog({
   const summary = (which: Section, label: string, value: string) => (
     <button
       type="button"
-      className="card-property"
+      className={`card-property${which === "tags" ? " card-tags-property" : ""}`}
+      aria-label={
+        which === "tags" && !task.tags?.length
+          ? "Tags: Adicionar tag"
+          : `${label} ${value}`
+      }
+      title={`${label}: ${value}`}
       aria-haspopup="dialog"
       disabled={disabled || contentPending || contentDirty || section !== null}
       onClick={() => open(which)}
     >
-      <span>{label}</span>
-      <strong>{value}</strong>
+      {which === "tags" && task.tags?.length ? (
+        task.tags.map((tag) => (
+          <span className="card-tag" key={tag}>
+            {tag}
+          </span>
+        ))
+      ) : (
+        <>
+          <TaskIcon
+            name={
+              which === "assignee"
+                ? "person"
+                : which === "priority"
+                  ? "flag"
+                  : which === "tags"
+                    ? "plus"
+                    : which === "more"
+                      ? task.visibility === "private"
+                        ? "lock"
+                        : "people"
+                      : label === "Recorrência"
+                        ? "repeat"
+                        : "calendar"
+            }
+          />
+          <span>{which === "tags" ? "Adicionar tag" : value}</span>
+        </>
+      )}
     </button>
   );
   const date = task.dueAt
@@ -172,8 +209,7 @@ export function TaskDetailsDialog({
                   ? "Em andamento"
                   : task.status === "cancelled"
                     ? "Cancelada · Consulta"
-                    : "A fazer"}{" "}
-              · {task.visibility === "private" ? "Somente eu" : "Da casa"}
+                    : "A fazer"}
             </p>
             <button
               type="button"
@@ -196,10 +232,17 @@ export function TaskDetailsDialog({
             {!section && feedback}
           </div>
           <div className="task-details-layout">
-            <aside
+            <div
               className="card-properties"
+              role="group"
               aria-label="Propriedades do cartão"
             >
+              {summary("tags", "Tags", task.tags?.join(", ") || "Sem tags")}
+              {summary(
+                "priority",
+                "Prioridade",
+                taskPriorityLabels[task.priority ?? "medium"],
+              )}
               {summary(
                 "schedule",
                 task.kind === "event" ? "Início" : "Prazo",
@@ -227,13 +270,12 @@ export function TaskDetailsDialog({
                 household.members.find((m) => m.userId === task.assigneeUserId)
                   ?.displayName || "Sem responsável",
               )}
-              {summary("tags", "Tags", task.tags?.join(", ") || "Sem tags")}
               {summary(
                 "more",
                 "Mais opções",
-                task.visibility === "private" ? "Somente eu" : "Todos da casa",
+                task.visibility === "private" ? "Somente eu" : "Da casa",
               )}
-            </aside>
+            </div>
             <div className="card-detail-body">
               <TaskCardContentPanel
                 queue={cardQueue}
@@ -291,6 +333,24 @@ export function TaskDetailsDialog({
               key={section}
             >
               <fieldset disabled={disabled || contentPending}>
+                {section === "priority" && (
+                  <label>
+                    Prioridade
+                    <select
+                      name="priority"
+                      defaultValue={snapshot.priority ?? "medium"}
+                      autoFocus
+                    >
+                      {Object.entries(taskPriorityLabels).map(
+                        ([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                )}
                 {section === "title" && (
                   <label>
                     Título
