@@ -168,10 +168,12 @@ export async function syncTaskCommandQueue(
   gateway: AppGateway,
   context: QueueContext,
   isCurrentContext: () => boolean,
+  canSend?: (command: TaskGatewayCommand) => Promise<boolean>,
 ) {
   for (const entry of await queue.list(context)) {
     if (!isCurrentContext()) return;
     if (entry.status !== "pending") continue;
+    if (canSend && !(await canSend(entry.command))) continue;
     try {
       await gateway.executeTaskCommand(entry.command);
       if (!isCurrentContext()) return;

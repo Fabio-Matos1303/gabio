@@ -20,6 +20,9 @@ import type {
   Task,
   TaskCommandReceipt,
   TaskGatewayCommand,
+  TaskCardContent,
+  TaskCardCommand,
+  TaskCardReceipt,
 } from "@gabio/contracts";
 
 export type FinanceAccount = {
@@ -170,6 +173,8 @@ export interface AppGateway {
   ): Promise<GoogleReading>;
   saveExternalTaskTags?(command: ExternalTagsCommand): Promise<void>;
   listTasks(): Promise<Task[]>;
+  readTaskCard?(taskId: string): Promise<TaskCardContent>;
+  executeTaskCardCommand?(command: TaskCardCommand): Promise<TaskCardReceipt>;
   listCalendarEvents(): Promise<CalendarEvent[]>;
   executeTaskCommand(command: TaskGatewayCommand): Promise<TaskCommandReceipt>;
   loadFinance(): Promise<FinanceSnapshot>;

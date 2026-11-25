@@ -1,5 +1,11 @@
 import { createRoot } from "react-dom/client";
-import { taskSchema, type Task } from "@gabio/contracts";
+import {
+  taskSchema,
+  taskCardCommandSchema,
+  taskCardContentSchema,
+  type Task,
+  type TaskCardContent,
+} from "@gabio/contracts";
 import { App } from "../../apps/web/src/app/App";
 import type {
   AppGateway,
@@ -67,6 +73,38 @@ let catalog = [
   },
 ];
 const tagReceipts = new Set<string>();
+const cardContent = new Map<string, TaskCardContent>();
+cardContent.set(tasks[0]!.id, {
+  taskId: tasks[0]!.id,
+  notes:
+    "Organizar os itens por categoria e conferir o que já existe na despensa.\nUsar esta checklist como apoio para a próxima compra.",
+  notesVersion: 1,
+  checklists: [
+    {
+      id: "50000000-0000-4000-8000-000000000001",
+      title: "Preparar a compra",
+      version: 1,
+      items: [
+        {
+          id: "60000000-0000-4000-8000-000000000001",
+          text: "Conferir a despensa",
+          completed: true,
+        },
+        {
+          id: "60000000-0000-4000-8000-000000000002",
+          text: "Separar itens de limpeza",
+          completed: false,
+        },
+        {
+          id: "60000000-0000-4000-8000-000000000003",
+          text: "Revisar a lista antes de sair",
+          completed: false,
+        },
+      ],
+    },
+  ],
+});
+const cardReceipts = new Set<string>();
 const gateway: AppGateway = {
   isConfigured: true,
   getSession: async () => user,
@@ -211,7 +249,67 @@ const gateway: AppGateway = {
     ],
   }),
   saveExternalTaskTags: async () => {},
-  listTasks: async () => tasks,
+  listTasks: async () =>
+    tasks.map((t) => {
+      const content = cardContent.get(t.id);
+      const items = content?.checklists.flatMap((c) => c.items) ?? [];
+      return {
+        ...t,
+        cardSummary: {
+          hasNotes: !!content?.notes.trim(),
+          totalItems: items.length,
+          completedItems: items.filter((i) => i.completed).length,
+        },
+      };
+    }),
+  readTaskCard: async (taskId) =>
+    taskCardContentSchema.parse(
+      structuredClone(
+        cardContent.get(taskId) ?? {
+          taskId,
+          notes: "",
+          notesVersion: 0,
+          checklists: [],
+        },
+      ),
+    ),
+  executeTaskCardCommand: async (value) => {
+    const command = taskCardCommandSchema.parse(value);
+    const p = command.payload;
+    if (!cardReceipts.has(command.commandId)) {
+      const content = structuredClone(
+        cardContent.get(p.taskId) ?? {
+          taskId: p.taskId,
+          notes: "",
+          notesVersion: 0,
+          checklists: [],
+        },
+      );
+      if (command.type === "save_notes") {
+        content.notes = command.payload.notes;
+        content.notesVersion++;
+      } else if (command.type === "delete_checklist")
+        content.checklists = content.checklists.filter(
+          (c) => c.id !== command.payload.checklistId,
+        );
+      else {
+        const p = command.payload;
+        const existing = content.checklists.find((c) => c.id === p.checklistId);
+        content.checklists = content.checklists.filter(
+          (c) => c.id !== p.checklistId,
+        );
+        content.checklists.push({
+          id: p.checklistId,
+          title: p.title,
+          items: p.items,
+          version: (existing?.version ?? 0) + 1,
+        });
+      }
+      cardContent.set(p.taskId, taskCardContentSchema.parse(content));
+      cardReceipts.add(command.commandId);
+    }
+    return { commandId: command.commandId, taskId: p.taskId, replayed: false };
+  },
   listCalendarEvents: async () => [],
   loadFinance: async () => ({
     accounts: [],
@@ -250,7 +348,10 @@ const gateway: AppGateway = {
                 command.payload.kind === "task"
                   ? null
                   : (command.payload.eventEndsAt ?? old.eventEndsAt),
-              dueAt: command.payload.dueAt,
+              dueAt:
+                command.payload.dueAt === undefined
+                  ? old.dueAt
+                  : command.payload.dueAt,
               recurrence: command.payload.recurrence ?? old.recurrence,
               recurrenceRule: command.payload.recurrenceRule ?? null,
               assigneeUserId: command.payload.assigneeUserId ?? null,

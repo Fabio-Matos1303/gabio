@@ -29,6 +29,10 @@ import {
   taskCommandReceiptSchema,
   taskGatewayCommandSchema,
   taskSchema,
+  taskCardContentSchema,
+  taskCardCommandSchema,
+  taskCardReceiptSchema,
+  type TaskCardCommand,
   type TaskGatewayCommand,
   type FinanceGatewayCommand,
   type FinanceCommandConfirmation,
@@ -525,7 +529,7 @@ export class SupabaseGateway implements AppGateway {
     const tasks = [];
     for (let offset = 0; offset <= 1000000; offset += 500) {
       const { data, error } = await this.configuredClient().rpc(
-        "list_tasks_page_v2",
+        "list_tasks_page_v3",
         { page_offset: offset },
       );
       if (error) throw friendlyError();
@@ -534,6 +538,42 @@ export class SupabaseGateway implements AppGateway {
       if (page.length < 500) return tasks;
     }
     throw friendlyError();
+  }
+
+  async readTaskCard(taskId: string) {
+    z.string().uuid().parse(taskId);
+    const { data, error } = await this.configuredClient().rpc(
+      "read_task_card",
+      { target_task_id: taskId },
+    );
+    if (error)
+      throw new GatewayError(
+        undefined,
+        error.code === "40001" ? "conflict" : "generic",
+      );
+    const content = taskCardContentSchema.parse(data);
+    if (content.taskId !== taskId) throw friendlyError();
+    return content;
+  }
+
+  async executeTaskCardCommand(value: TaskCardCommand) {
+    const { commandId, ...command } = taskCardCommandSchema.parse(value);
+    const { data, error } = await this.configuredClient().rpc(
+      "execute_task_card_command",
+      { command_id: commandId, command },
+    );
+    if (error)
+      throw new GatewayError(
+        undefined,
+        error.code === "40001" ? "conflict" : "generic",
+      );
+    const receipt = taskCardReceiptSchema.parse(data);
+    if (
+      receipt.commandId !== commandId ||
+      receipt.taskId !== command.payload.taskId
+    )
+      throw friendlyError();
+    return receipt;
   }
 
   async listCalendarEvents(): Promise<CalendarEvent[]> {

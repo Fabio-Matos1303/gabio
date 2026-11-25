@@ -140,6 +140,60 @@ async function openTaskDraft() {
 }
 
 describe("App", () => {
+  it("keeps pending card changes reachable and blocks completion until synchronization", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    gateway.listTasks = vi.fn().mockResolvedValue([makeTask()]);
+    gateway.readTaskCard = vi.fn().mockResolvedValue({
+      taskId: makeTask().id,
+      notes: "Nota sintética",
+      notesVersion: 1,
+      checklists: [],
+    });
+    gateway.executeTaskCardCommand = vi
+      .fn()
+      .mockRejectedValue(new Error("response lost"));
+    render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    await screen.findByText("Nota sintética");
+    fireEvent.click(screen.getByRole("button", { name: "Editar observações" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Observações" }), {
+      target: { value: "Conteúdo pendente" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar observações" }));
+    await screen.findByText(/Alteração guardada neste dispositivo/);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Fechar editar tarefa" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Fechar editar tarefa" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Concluir" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: `Abrir cartão: ${makeTask().title}` }),
+    ).toBeEnabled();
+    expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
+  });
+
+  it("closes an open card when a confirmed read removes access", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    const list = vi.fn().mockResolvedValue([makeTask()]);
+    gateway.listTasks = list;
+    render(<App gateway={gateway} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    list.mockResolvedValue([]);
+    fireEvent.click(screen.getByRole("button", { name: "Atualizar tarefas" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
   it("creates an event with explicit start and end in the household timezone", async () => {
     window.history.replaceState({}, "", "/#tarefas");
     const gateway = gatewayWith();
@@ -190,6 +244,7 @@ describe("App", () => {
     render(<App gateway={gateway} />);
     fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
     const form = within(screen.getByRole("dialog", { name: "Editar tarefa" }));
+    fireEvent.click(form.getByRole("button", { name: /^Prazo/ }));
     expect(form.getByLabelText("Tipo do item")).toHaveValue("task");
     fireEvent.change(form.getByLabelText("Tipo do item"), {
       target: { value: "event" },
@@ -200,7 +255,7 @@ describe("App", () => {
     fireEvent.change(form.getByLabelText("Fim do evento"), {
       target: { value: "2027-01-04T10:30" },
     });
-    fireEvent.click(form.getByRole("button", { name: "Salvar evento" }));
+    fireEvent.click(form.getByRole("button", { name: "Salvar alteração" }));
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -223,6 +278,7 @@ describe("App", () => {
     const editor = within(
       screen.getByRole("dialog", { name: "Editar tarefa" }),
     );
+    fireEvent.click(editor.getByRole("button", { name: /^Prazo/ }));
     fireEvent.change(editor.getByLabelText("Prazo"), {
       target: { value: "2026-11-02T09:00" },
     });
@@ -230,9 +286,9 @@ describe("App", () => {
       target: { value: "custom" },
     });
     fireEvent.click(editor.getByLabelText("Terça"));
-    fireEvent.click(editor.getByRole("button", { name: "Salvar tarefa" }));
+    fireEvent.click(editor.getByRole("button", { name: "Salvar alteração" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "o prazo deve corresponder aos dias escolhidos",
+      "Recorrências exigem prazo válido",
     );
     expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
   });
@@ -674,11 +730,14 @@ describe("App", () => {
       }),
     );
     const editor = screen.getByRole("dialog", { name: "Editar tarefa" });
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Editar título" }),
+    );
     fireEvent.change(within(editor).getByLabelText("Título"), {
       target: { value: "Título sintético revisado" },
     });
     fireEvent.click(
-      within(editor).getByRole("button", { name: "Salvar tarefa" }),
+      within(editor).getByRole("button", { name: "Salvar alteração" }),
     );
     await waitFor(() =>
       expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
@@ -693,9 +752,11 @@ describe("App", () => {
       ),
     );
     await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: "Editar tarefa" }),
-      ).not.toBeInTheDocument(),
+      expect(within(editor).queryByLabelText("Título")).not.toBeInTheDocument(),
+    );
+    expect(editor).toBeInTheDocument();
+    fireEvent.click(
+      within(editor).getByRole("button", { name: "Fechar editar tarefa" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Concluir" }));
     await waitFor(() =>

@@ -1,7 +1,12 @@
 import { TaskIcon } from "./TaskIcon.js";
-import { DialogCloseButton, TaskCardDialog } from "./TaskCardDialog.js";
+import { TaskDetailsDialog } from "./TaskDetailsDialog.js";
+import {
+  createCardCommandQueue,
+  syncCardCommandQueue,
+  type QueuedCardCommand,
+} from "../lib/task-card-queue.js";
 import { TaskViews } from "./TaskViews.js";
-import { TaskTagFields, parseTagInput } from "./TaskTagFields.js";
+import { parseTagInput } from "./TaskTagFields.js";
 import type { TagRecord } from "../lib/task-views.js";
 import { GoogleCalendarSettings } from "./GoogleCalendarSettings.js";
 import {
@@ -36,12 +41,9 @@ import { FinancePanel } from "./FinancePanel.js";
 import { HomeCalendar } from "./HomeCalendar.js";
 import { HomeInsights } from "./HomeInsights.js";
 import { BottomNavigation } from "./BottomNavigation.js";
-import { TaskKindFields } from "./TaskKindFields.js";
+
 import { TaskCreationDialog } from "./TaskCreationDialog.js";
-import {
-  TaskRecurrenceFields,
-  taskRecurrenceLabel,
-} from "./TaskRecurrenceFields.js";
+import { taskRecurrenceLabel } from "./TaskRecurrenceFields.js";
 import "../task-creation.css";
 import { TelegramSettings } from "./TelegramSettings.js";
 import {
@@ -472,31 +474,33 @@ function TaskPanel({
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [catalog, setCatalog] = useState<TagRecord[]>([]);
-  const [editingVisibility, setEditingVisibility] = useState<
-    "household" | "private"
-  >("household");
 
   const [queued, setQueued] = useState<QueuedTaskCommand[]>([]);
+  const [cardQueued, setCardQueued] = useState<QueuedCardCommand[]>([]);
   const [notice, setNotice] = useState<Notice>(null);
   const [creationOpen, setCreationOpen] = useState(false);
   const [creationTitle, setCreationTitle] = useState("");
   const [creationSequence, setCreationSequence] = useState(0);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [editingKind, setEditingKind] = useState<"task" | "event">("task");
-  useEffect(() => {
-    setEditingVisibility(editingTask?.visibility ?? "household");
-    setEditingKind(editingTask?.kind ?? "task");
-  }, [editingTask]);
-  const [savingTask, setSavingTask] = useState(false);
   const [sendingTask, setSendingTask] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState(true);
   const commandInFlight = useRef(false);
   const queue = useMemo(createTaskCommandQueue, []);
+  const cardQueue = useMemo(createCardCommandQueue, []);
   const context = useMemo(
     () => ({ userId: user.id, householdId: household.id }),
     [user.id, household.id],
   );
   const contextKey = user.id + ":" + household.id;
+  const canSendTask = useCallback(
+    async (command: TaskGatewayCommand) => {
+      if (command.type === "create") return true;
+      return !(await cardQueue.list(context)).some(
+        (entry) => entry.command.payload.taskId === command.payload.taskId,
+      );
+    },
+    [cardQueue, context],
+  );
   useEffect(() => {
     const close = () => setCreationOpen(false);
     window.addEventListener("hashchange", close);
@@ -542,21 +546,37 @@ function TaskPanel({
         });
       }
       const nextQueued = await queue.list(context);
+      const nextCardQueued = await cardQueue.list(context);
       if (!isCurrent()) return false;
       setTasks(nextTasks);
+      if (confirmed)
+        setEditingTask((current) =>
+          current
+            ? (nextTasks.find((item) => item.id === current.id) ?? null)
+            : null,
+        );
       setQueued(nextQueued);
+      setCardQueued(nextCardQueued);
       return confirmed;
     } finally {
       if (isCurrent()) setLoadingTasks(false);
     }
-  }, [context, contextKey, gateway, queue]);
+  }, [context, contextKey, gateway, queue, cardQueue]);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
+        if (navigator.onLine && gateway.executeTaskCardCommand)
+          await syncCardCommandQueue(cardQueue, gateway, context, () => active);
         if (navigator.onLine)
-          await syncTaskCommandQueue(queue, gateway, context, () => active);
+          await syncTaskCommandQueue(
+            queue,
+            gateway,
+            context,
+            () => active,
+            canSendTask,
+          );
         if (active) await refresh();
       } catch {
         if (active)
@@ -593,7 +613,7 @@ function TaskPanel({
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [context, gateway, queue, refresh]);
+  }, [context, gateway, queue, cardQueue, refresh, canSendTask]);
 
   async function updateTasks() {
     if (commandInFlight.current) return;
@@ -601,12 +621,20 @@ function TaskPanel({
     setSendingTask(true);
     setNotice(null);
     try {
+      if (navigator.onLine && gateway.executeTaskCardCommand)
+        await syncCardCommandQueue(
+          cardQueue,
+          gateway,
+          context,
+          () => liveContextKey.current === contextKey,
+        );
       if (navigator.onLine)
         await syncTaskCommandQueue(
           queue,
           gateway,
           context,
           () => liveContextKey.current === contextKey,
+          canSendTask,
         );
       if (liveContextKey.current === contextKey) await refresh();
     } catch {
@@ -627,6 +655,43 @@ function TaskPanel({
     setSendingTask(true);
     setNotice(null);
     try {
+      if (
+        command.type !== "create" &&
+        (await cardQueue.list(context)).some(
+          (entry) => entry.command.payload.taskId === command.payload.taskId,
+        )
+      ) {
+        setNotice({
+          kind: "error",
+          text: "Sincronize ou resolva as alterações pendentes do cartão antes de alterar suas propriedades ou concluir.",
+        });
+        return false;
+      }
+      if (
+        command.type === "set_status" &&
+        command.payload.status === "completed" &&
+        gateway.readTaskCard
+      ) {
+        try {
+          const details = await gateway.readTaskCard(command.payload.taskId);
+          const remaining = details.checklists
+            .flatMap((list) => list.items)
+            .filter((item) => !item.completed).length;
+          if (
+            remaining &&
+            !window.confirm(
+              `Esta tarefa tem ${remaining} item(ns) pendente(s) nas checklists. Concluir mesmo assim?`,
+            )
+          )
+            return false;
+        } catch {
+          setNotice({
+            kind: "error",
+            text: "Não foi possível verificar as checklists. Atualize a tarefa antes de concluir.",
+          });
+          return false;
+        }
+      }
       // Persist before the first attempt so a lost response can be retried
       // idempotently with the exact same commandId.
       await queue.put(context, command);
@@ -645,6 +710,7 @@ function TaskPanel({
         gateway,
         context,
         () => liveContextKey.current === contextKey,
+        canSendTask,
       );
       const remaining = await queue.list(context);
       if (liveContextKey.current !== contextKey) return false;
@@ -763,91 +829,38 @@ function TaskPanel({
     }
   }
 
-  async function saveTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveTaskChanges(
+    changes: Omit<
+      ReturnType<typeof taskUpdateCommandSchema.parse>["payload"],
+      "taskId" | "expectedVersion"
+    >,
+    expectedVersion: number,
+  ) {
     if (
       !editingTask ||
-      savingTask ||
-      sendingTask ||
-      pendingIds.has(editingTask.id) ||
-      editingTask.status === "completed"
+      commandInFlight.current ||
+      pendingIds.has(editingTask.id)
     )
-      return;
-    const form = new FormData(event.currentTarget);
-    const due = String(form.get("dueAt") ?? "");
-    const dueDate = parseTaskDueAt(due);
-    if (due && !dueDate) {
-      setNotice({ kind: "error", text: "Informe um prazo válido." });
-      return;
-    }
-    const eventEnd = parseTaskDueAt(String(form.get("eventEndsAt") ?? ""));
-    if (
-      form.get("kind") === "event" &&
-      (!dueDate || !eventEnd || eventEnd <= dueDate)
-    ) {
-      setNotice({
-        kind: "error",
-        text: "Informe o início e um fim posterior para o evento.",
-      });
-      return;
-    }
+      return false;
+    const task =
+      tasks.find((item) => item.id === editingTask.id) ?? editingTask;
     const parsed = taskUpdateCommandSchema.safeParse({
       commandId: crypto.randomUUID(),
       type: "update",
-      payload: {
-        taskId: editingTask.id,
-        expectedVersion: editingTask.version,
-        title: String(form.get("title") ?? ""),
-        kind: String(form.get("kind") ?? editingTask.kind ?? "task"),
-        eventEndsAt:
-          parseTaskDueAt(
-            String(form.get("eventEndsAt") ?? ""),
-          )?.toISOString() ?? null,
-        dueAt: dueDate?.toISOString() ?? null,
-        assigneeUserId: String(form.get("assigneeUserId") ?? "") || null,
-        recurrence: String(form.get("recurrence")),
-        recurrenceRule: parseRecurrenceRule(form),
-        visibility: String(form.get("visibility")),
-        tags: parseTagInput(form.get("tags")),
-      },
+      payload: { taskId: task.id, expectedVersion, ...changes },
     });
-    const updatedTask = parsed.success
-      ? taskSchema.safeParse({
-          ...editingTask,
-          title: parsed.data.payload.title,
-          kind: parsed.data.payload.kind,
-          eventEndsAt: parsed.data.payload.eventEndsAt,
-          dueAt: parsed.data.payload.dueAt,
-          assigneeUserId: parsed.data.payload.assigneeUserId,
-          recurrence: parsed.data.payload.recurrence,
-          recurrenceRule: parsed.data.payload.recurrenceRule,
-          visibility: parsed.data.payload.visibility,
-          tags: parsed.data.payload.tags,
-        })
-      : null;
     if (
       !parsed.success ||
-      !updatedTask?.success ||
-      (parsed.data.payload.recurrence !== "none" &&
-        !parsed.data.payload.dueAt) ||
-      (parsed.data.payload.visibility === "private" &&
-        parsed.data.payload.assigneeUserId &&
-        parsed.data.payload.assigneeUserId !== user.id)
+      !taskSchema.safeParse({ ...task, ...changes }).success
     ) {
       setNotice({
         kind: "error",
-        text: "Revise as tags (até 10, únicas, com até 32 caracteres) e os detalhes: o prazo deve corresponder aos dias escolhidos e não ultrapassar o fim da repetição. Tarefas privadas só podem ser atribuídas a você.",
+        text: "Revise os campos. Recorrências exigem prazo válido; eventos exigem fim posterior ao início. Tarefas privadas só podem ser atribuídas a você.",
       });
-      return;
+      return false;
     }
-    setSavingTask(true);
-    try {
-      if (await run(parsed.data)) setEditingTask(null);
-    } finally {
-      setSavingTask(false);
-    }
+    return run(parsed.data);
   }
-
   const displayedTasks = projectTaskCommands(tasks, queued, context);
   const loadCatalog = useCallback(async () => {
     if (gateway.listTaskTags) setCatalog(await gateway.listTaskTags());
@@ -865,7 +878,7 @@ function TaskPanel({
       active = false;
     };
   }, [gateway, tasks]);
-  const pendingIds = new Set(
+  const taskPendingIds = new Set(
     queued
       .filter((entry) => entry.status === "pending")
       .map((entry) =>
@@ -874,6 +887,10 @@ function TaskPanel({
           : entry.command.payload.taskId,
       ),
   );
+  const pendingIds = new Set([
+    ...taskPendingIds,
+    ...cardQueued.map((entry) => entry.command.payload.taskId),
+  ]);
   async function discardConflict(entry: QueuedTaskCommand) {
     if (entry.status !== "conflict") return;
     await queue.remove(context, entry.command.commandId);
@@ -901,7 +918,7 @@ function TaskPanel({
             type="button"
             className="task-card-title"
             aria-label={`Abrir cartão: ${task.title}`}
-            disabled={sendingTask || pendingIds.has(task.id)}
+            disabled={sendingTask || taskPendingIds.has(task.id)}
             onClick={() => {
               setNotice(null);
               setEditingTask(task);
@@ -919,6 +936,13 @@ function TaskPanel({
           ))}
         </div>
         <div className="task-card-meta">
+          {task.cardSummary?.hasNotes && <span>Observações</span>}
+          {!!task.cardSummary?.totalItems && (
+            <span>
+              Checklist: {task.cardSummary.completedItems} de{" "}
+              {task.cardSummary.totalItems}
+            </span>
+          )}
           {task.kind === "event" && <span>Evento</span>}
           {task.kind === "event" && task.eventEndsAt && (
             <span>
@@ -1100,145 +1124,28 @@ function TaskPanel({
       {loadingTasks && <p role="status">Atualizando tarefas…</p>}
       <NoticeBox notice={creationOpen || editingTask ? null : notice} />
       {editingTask && (
-        <TaskCardDialog
-          open
-          title={
-            editingKind === "event"
-              ? editingTask.status === "completed"
-                ? "Cartão do evento"
-                : "Editar evento"
-              : editingTask.status === "completed"
-                ? "Cartão da tarefa"
-                : "Editar tarefa"
+        <TaskDetailsDialog
+          key={editingTask.id}
+          task={
+            displayedTasks.find((item) => item.id === editingTask.id) ??
+            editingTask
           }
+          gateway={gateway}
+          userId={user.id}
+          household={household}
+          catalog={catalog}
+          busy={sendingTask}
+          pending={taskPendingIds.has(editingTask.id)}
+          contentPending={cardQueued.some(
+            (entry) => entry.command.payload.taskId === editingTask.id,
+          )}
+          cardQueue={cardQueue}
+          feedback={<NoticeBox notice={notice} />}
           onClose={() => setEditingTask(null)}
-          busy={savingTask || sendingTask}
-        >
-          <form
-            className="task-dialog-form task-editor"
-            onSubmit={saveTask}
-            key={editingTask.id}
-          >
-            <div className="task-dialog-fields">
-              <NoticeBox notice={notice} />
-              <p className="task-card-context">
-                {editingTask.status === "completed"
-                  ? "Concluída · Consulta"
-                  : editingTask.status === "in_progress"
-                    ? "Em andamento"
-                    : "A fazer"}{" "}
-                ·{" "}
-                {editingTask.visibility === "private"
-                  ? "Somente eu"
-                  : "Da casa"}
-              </p>
-              <fieldset
-                className="task-card-edit-fields"
-                disabled={
-                  editingTask.status === "completed" ||
-                  savingTask ||
-                  sendingTask
-                }
-              >
-                <label>
-                  Título
-                  <input
-                    disabled={sendingTask}
-                    name="title"
-                    defaultValue={editingTask.title}
-                    required
-                    maxLength={240}
-                  />
-                </label>
-                <TaskKindFields
-                  task={editingTask}
-                  disabled={sendingTask}
-                  onKindChange={setEditingKind}
-                />
-                <label>
-                  Responsável
-                  <select
-                    disabled={sendingTask}
-                    name="assigneeUserId"
-                    defaultValue={editingTask.assigneeUserId ?? ""}
-                  >
-                    <option value="">Sem responsável</option>
-                    {household.members.map((member) => (
-                      <option key={member.userId} value={member.userId}>
-                        {member.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <TaskTagFields
-                  key={editingTask.id + editingVisibility}
-                  tags={
-                    editingVisibility === editingTask.visibility
-                      ? (editingTask.tags ?? [])
-                      : []
-                  }
-                  catalog={catalog}
-                  visibility={editingVisibility}
-                  disabled={
-                    savingTask ||
-                    sendingTask ||
-                    editingVisibility !== editingTask.visibility
-                  }
-                />
-                {editingVisibility !== editingTask.visibility && (
-                  <p role="status">
-                    As tags serão removidas ao mudar a visibilidade. Salve e
-                    reabra para selecionar tags do novo escopo.
-                  </p>
-                )}
-                <TaskRecurrenceFields
-                  task={editingTask}
-                  disabled={sendingTask}
-                />
-                <label>
-                  Quem pode ver
-                  <select
-                    disabled={sendingTask}
-                    name="visibility"
-                    value={editingVisibility}
-                    onChange={(event) =>
-                      setEditingVisibility(
-                        event.target.value as "household" | "private",
-                      )
-                    }
-                  >
-                    <option value="household">Todos da casa</option>
-                    <option
-                      value="private"
-                      disabled={editingTask.ownerUserId !== user.id}
-                    >
-                      Somente eu
-                    </option>
-                  </select>
-                </label>
-              </fieldset>
-            </div>
-            <footer className="task-dialog-actions">
-              {editingTask.status !== "completed" && (
-                <button
-                  className="primary-button"
-                  disabled={savingTask || sendingTask}
-                >
-                  {editingKind === "event" ? "Salvar evento" : "Salvar tarefa"}
-                </button>
-              )}
-              <DialogCloseButton
-                className="secondary-button"
-                disabled={savingTask}
-              >
-                {editingTask.status === "completed"
-                  ? "Fechar cartão"
-                  : "Cancelar edição"}
-              </DialogCloseButton>
-            </footer>
-          </form>
-        </TaskCardDialog>
-      )}
+          onUpdate={saveTaskChanges}
+          onChanged={refresh}
+        />
+      )}{" "}
       {queued.length > 0 && (
         <div className="queue-notice" role="status">
           <strong>{queued.length} alteração(ões) pendente(s)</strong>
@@ -1271,9 +1178,9 @@ function TaskPanel({
         feedback={<NoticeBox notice={notice} />}
       />
       <TaskViews
-        canOpenTask={(task) => !sendingTask && !pendingIds.has(task.id)}
+        canOpenTask={(task) => !sendingTask && !taskPendingIds.has(task.id)}
         onOpenTask={(task) => {
-          if (sendingTask || pendingIds.has(task.id)) return;
+          if (sendingTask || taskPendingIds.has(task.id)) return;
           setNotice(null);
           setEditingTask(task);
         }}
@@ -1491,7 +1398,7 @@ function Dashboard({
               <GoogleCalendarSettings gateway={gateway} />
             )}
             {!taskMvp && <TelegramSettings gateway={gateway} />}
-            <p className="muted">Versão: ios-motion-2026.11.03.1</p>
+            <p className="muted">Versão: task-phase-order-2026.11.03.1</p>
           </section>
         </div>
       )}

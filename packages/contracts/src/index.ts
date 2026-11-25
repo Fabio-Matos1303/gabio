@@ -224,12 +224,30 @@ export const taskGatewayCommandSchema = z.discriminatedUnion("type", [
 ]);
 export type TaskGatewayCommand = z.infer<typeof taskGatewayCommandSchema>;
 
+export {
+  taskCardContentSchema,
+  taskCardCommandSchema,
+  taskCardReceiptSchema,
+  taskCardSummarySchema,
+  taskChecklistSchema,
+  checklistItemSchema,
+} from "./task-card.js";
+export type {
+  TaskCardContent,
+  TaskChecklist,
+  ChecklistItem,
+  TaskCardCommand,
+  TaskCardReceipt,
+} from "./task-card.js";
+import { taskCardSummarySchema } from "./task-card.js";
+
 export const taskSchema = z
   .object({
     kind: taskKindSchema.optional(),
     eventEndsAt: z.string().datetime({ offset: true }).nullable().optional(),
     id: z.string().uuid(),
     householdId: z.string().uuid(),
+    cardSummary: taskCardSummarySchema.optional(),
     ownerUserId: z.string().uuid().nullable(),
     createdBy: z.string().uuid(),
     assigneeUserId: z.string().uuid().nullable(),

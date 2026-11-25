@@ -59,43 +59,46 @@ export function TaskCreationDialog({
               placeholder="O que precisa ser feito?"
             />
           </label>
-          <TaskKindFields
-            key={resetKey}
-            disabled={busy}
-            onKindChange={setKind}
-          />
-          <label>
-            Responsável
-            <select name="assigneeUserId" defaultValue="" disabled={busy}>
-              <option value="">Sem responsável</option>
-              {household.members.map((member) => (
-                <option key={member.userId} value={member.userId}>
-                  {member.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <TaskRecurrenceFields disabled={busy} />
-          <TaskTagFields
-            key={resetKey + visibility}
-            catalog={catalog}
-            visibility={visibility}
-            disabled={busy}
-          />
-          <label>
-            Quem pode ver
-            <select
-              name="visibility"
-              value={visibility}
-              onChange={(event) =>
-                setVisibility(event.target.value as "household" | "private")
-              }
+          <details className="task-creation-options">
+            <summary>Prazo, responsável e outras opções</summary>
+            <TaskKindFields
+              key={resetKey}
               disabled={busy}
-            >
-              <option value="household">Todos da casa</option>
-              <option value="private">Somente eu</option>
-            </select>
-          </label>
+              onKindChange={setKind}
+            />
+            <label>
+              Responsável
+              <select name="assigneeUserId" defaultValue="" disabled={busy}>
+                <option value="">Sem responsável</option>
+                {household.members.map((member) => (
+                  <option key={member.userId} value={member.userId}>
+                    {member.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <TaskRecurrenceFields disabled={busy} />
+            <TaskTagFields
+              key={resetKey + visibility}
+              catalog={catalog}
+              visibility={visibility}
+              disabled={busy}
+            />
+            <label>
+              Quem pode ver
+              <select
+                name="visibility"
+                value={visibility}
+                onChange={(event) =>
+                  setVisibility(event.target.value as "household" | "private")
+                }
+                disabled={busy}
+              >
+                <option value="household">Todos da casa</option>
+                <option value="private">Somente eu</option>
+              </select>
+            </label>
+          </details>
         </div>
         <footer className="task-dialog-actions">
           <DialogCloseButton className="secondary-button" disabled={busy}>

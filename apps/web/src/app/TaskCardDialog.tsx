@@ -24,6 +24,7 @@ export function TaskCardDialog({
   busy = false,
   children,
   className = "",
+  canClose,
 }: {
   open: boolean;
   title: string;
@@ -31,10 +32,14 @@ export function TaskCardDialog({
   busy?: boolean;
   children: ReactNode;
   className?: string;
+  canClose?: () => boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
-  const requestClose = useDialogMotion(ref, open, busy, onClose);
+  const dismiss = useDialogMotion(ref, open, busy, onClose);
+  const requestClose = () => {
+    if (!canClose || canClose()) dismiss();
+  };
   return (
     <dialog
       ref={ref}

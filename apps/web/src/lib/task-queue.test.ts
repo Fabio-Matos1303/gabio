@@ -26,6 +26,36 @@ const command: TaskGatewayCommand = {
 };
 
 describe("task command queue", () => {
+  it("does not send a task mutation while its card content is pending", async () => {
+    const queue = new MemoryTaskCommandQueue();
+    await queue.put(contextA, {
+      commandId: command.commandId,
+      type: "set_status",
+      payload: {
+        taskId: "40000000-0000-4000-8000-000000000001",
+        expectedVersion: 1,
+        status: "completed",
+      },
+    });
+    const gateway = { executeTaskCommand: vi.fn() } as unknown as AppGateway;
+    await syncTaskCommandQueue(
+      queue,
+      gateway,
+      contextA,
+      () => true,
+      async () => false,
+    );
+    expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
+    expect(await queue.list(contextA)).toHaveLength(1);
+    await syncTaskCommandQueue(
+      queue,
+      gateway,
+      contextA,
+      () => true,
+      async () => true,
+    );
+    expect(gateway.executeTaskCommand).toHaveBeenCalledTimes(1);
+  });
   it("partitions commands by user and household and preserves commandId", async () => {
     const queue = new MemoryTaskCommandQueue();
     await queue.put(contextA, command);
