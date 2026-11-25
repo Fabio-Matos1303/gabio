@@ -1,6 +1,6 @@
 # Campos visíveis com teclado virtual
 
-Status: publicação autorizada pelo usuário, release preparada em cópia isolada.
+Status: publicada e verificada em produção em 2026-11-25.
 
 ## Problema e correção
 
@@ -79,7 +79,38 @@ jsdom. A revisão independente da composição isolada não encontrou problemas
 de segurança nem alterações alheias. Não houve execução local dos testes SQL
 nesta correção exclusivamente de UI; o CI remoto executa o stack completo.
 
-Versão preparada: `keyboard-viewport-2026.11.25.1`. Não há alterações de
-permissões, banco, dependências, integrações ou escopos OAuth. A entrega permanece
-pendente até verificar a versão e a disponibilidade em produção e enviar o
-registro final ao GitHub.
+Versão publicada: `keyboard-viewport-2026.11.25.1`. Não há alterações de
+permissões, banco, dependências, integrações ou escopos OAuth.
+
+## Produção verificada
+
+Commit da implementação: `809a93c4aab8a60613592c8854b0763fb8567910`.
+Enviado para a branch da entrega antes da atualização da main, realizada com
+comparação da base esperada e sem force. Publicação automática pelo Cloudflare.
+
+URL: https://gabio.fabiosmo123.workers.dev.
+Verificação pública em 2026-11-25 às 21:40 UTC: `version.json` confirmou
+`keyboard-viewport-2026.11.25.1`, com escopo
+`tasks-online-google-reading-card-content`.
+
+Responderam HTTP 200: HTML, versão, manifesto, service worker, registro PWA,
+JavaScript `/assets/index-CgVzuuaW.js` e CSS `/assets/index-HuVQ9S-p.css`.
+Os arquivos servidos contêm o listener de VisualViewport/foco, os insets e a
+altura visível dos diálogos, ocultação da navegação durante edição com teclado
+e limite de textarea. Foram preservados os identificadores do leitor v4 e do
+comando de prioridade da versão anterior.
+
+Checks remotos aprovados no commit publicado: Workers Builds: gabio
+(produção), Supabase Preview, application e database-security. O último inclui
+o stack Supabase completo e seus testes SQL.
+CI: https://github.com/Fabio-Matos1303/gabio/actions/runs/45706007827.
+Build de produção: `ee39f83b-e3b2-47e3-982a-fd49461a3ef1`.
+Versão Cloudflare: `5114e91b-5d3c-491e-abe7-cb0b0e153fd5`.
+
+Evidências locais: `test-results/keyboard-viewport/report.json`, capturas
+sintéticas e `production.json`. Não houve fluxo autenticado com dados pessoais
+em produção. A validação do teclado continua limitada à simulação descrita
+acima; não foi realizado teste em dispositivo Android/iPad real.
+
+Este registro é enviado em commit posterior à implementação, na branch da
+entrega e na main, conforme o fluxo obrigatório do repositório.
