@@ -53,7 +53,20 @@ gateway legado. O achado sobre replay cruzado foi corrigido antes da publicaçã
 ## Publicação
 
 Versão preparada: `task-card-natural-layout-2026.11.25.1`.
-Migration e produção pendentes neste registro.
+Migration aplicada e metadados verificados; publicação do cliente pendente neste registro.
+
+Migration canônica: `20261125210842_task_priorities.sql`, com versão atribuída
+pelo provedor ao aplicar o SQL já enviado no commit
+`6176a63090df0a652ac527855c84d31fcffcdebf`. O nome de desenvolvimento foi
+normalizado para a versão do histórico remoto; o conteúdo permanece idêntico,
+SHA256 `9145cea0a0827b7c58885181f8baa0e82e407ebde46479249a4090a83bb3fd4b`.
+Não foram alteradas migrations de entregas anteriores.
+
+Verificação de metadados confirmou RLS, valor padrão, check de prioridade,
+trigger ativo, leitor invoker e ausência de execução anônima nos novos RPCs.
+Após a migration, os advisors mantiveram o baseline anterior e acrescentaram
+somente o aviso esperado de RPC definer autenticado, protegido pelos controles
+descritos acima. Nenhuma tarefa real foi criada, editada ou lida para verificação.
 Não foi realizado fluxo autenticado com dados pessoais em produção.
 
 Os advisors anteriores à mudança registraram avisos preexistentes de funções

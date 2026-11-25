@@ -19,7 +19,7 @@
   "docs/operations/task-priorities.md",
   "packages/contracts/src/task-priority.test.ts",
   "scripts/test-task-priority-db.cjs",
-  "supabase/migrations/20261125122145_task_priorities.sql",
+  "supabase/migrations/20261125210842_task_priorities.sql",
   "supabase/tests/task_priorities.test.sql",
   "scripts/task-priority-release-files.json"
 ]
