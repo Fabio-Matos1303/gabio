@@ -39,8 +39,7 @@ esperado, sem force. Versão `task-editor-footer-2026.11.25.1` confirmada em
 https://gabio.fabiosmo123.workers.dev/version.json.
 
 HTML, versão, manifesto, service worker, registro PWA, JavaScript
-`/assets/index-C14O6whs.js` e CSS `/assets/index-Dd_CnaKE.css` responderam HTTP
-200. O CSS servido contém o rodapé transparente, alinhamento à direita, largura
+`/assets/index-C14O6whs.js` e CSS `/assets/index-Dd_CnaKE.css` responderam HTTP 200. O CSS servido contém o rodapé transparente, alinhamento à direita, largura
 automática dos botões e margem de 12 px da legenda Tags.
 
 Checks remotos aprovados: Workers Builds: gabio (produção), Supabase Preview,
