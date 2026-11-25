@@ -1,7 +1,7 @@
 # ADR-019: Prioridade dos cartões
 
 - Data: 2026-11-25.
-- Status: aceito; publicação em preparação.
+- Status: aceito e publicado em 2026-11-25, versão `task-card-natural-layout-2026.11.25.1`.
 
 Prioridade baixa, média ou alta pertence à tarefa do Gabio. A coluna `priority`
 tem valor padrão `medium` e check constraint; herda a RLS e a proibição de escrita

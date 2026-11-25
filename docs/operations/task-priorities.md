@@ -53,7 +53,7 @@ gateway legado. O achado sobre replay cruzado foi corrigido antes da publicaçã
 ## Publicação
 
 Versão preparada: `task-card-natural-layout-2026.11.25.1`.
-Migration aplicada e metadados verificados; publicação do cliente pendente neste registro.
+Migration aplicada, cliente publicado e metadados verificados.
 
 Migration canônica: `20261125210842_task_priorities.sql`, com versão atribuída
 pelo provedor ao aplicar o SQL já enviado no commit
@@ -77,3 +77,27 @@ revogada para anon; a exposição autenticada é intencional, conforme o padrão
 do gateway. Referências de auditoria:
 [funções definer](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable)
 e [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
+
+## Produção verificada
+
+Implementação: `6176a63090df0a652ac527855c84d31fcffcdebf`.
+Commit publicado na main: `446b2fd053a5be9b0ecadc53f5b1b0c52902ab10`, com
+o nome canônico da migration. Ambos enviados ao GitHub antes da publicação;
+main atualizada com comparação da base esperada e sem force.
+
+URL: https://gabio.fabiosmo123.workers.dev.
+`/version.json` confirmou `task-card-natural-layout-2026.11.25.1` e o escopo
+`tasks-online-google-reading-card-content`.
+
+HTML, versão, manifesto, service worker, registro PWA, JavaScript
+`/assets/index-2xPuP078.js` e CSS `/assets/index-hvm7zsw0.css` responderam HTTP 200. O bundle público contém `list_tasks_page_v4`,
+`execute_task_priority_command` e a composição `card-tags-property`.
+
+Checks aprovados no commit publicado: Workers Builds: gabio (produção),
+Supabase Preview, application e database-security, com stack Supabase completo.
+CI: https://github.com/Fabio-Matos1303/gabio/actions/runs/45701746922.
+Build de produção Cloudflare: `c18f3446-e3a0-44b8-89ea-c6751c5eabaa`.
+
+Os containers descartáveis e a prévia sintética desta entrega foram encerrados.
+Não houve fluxo autenticado com dados pessoais em produção. O workspace
+original e seus trabalhos não relacionados permaneceram preservados.
