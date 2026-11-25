@@ -55,7 +55,7 @@ URL: https://gabio.fabiosmo123.workers.dev.
 worker, registro PWA e assets responderam HTTP 200. O bundle servido contém
 `task-editor-dialog`.
 
-Assets verificados: `/assets/index-DxIh0X3j.js` e
+Assets verificados: `/assets/index-DDKDfG3E.js` e
 `/assets/index-BMRIdNqZ.css`.
 
 Checks remotos aprovados no commit publicado: Workers Builds: gabio (produção),
