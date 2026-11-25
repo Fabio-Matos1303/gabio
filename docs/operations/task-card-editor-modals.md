@@ -45,6 +45,23 @@ temporário, sem alterar dependências do produto.
 
 ## Publicação
 
-Versão preparada: `task-card-editor-modals-2026.11.25.1`.
-Publicação e checks finais pendentes neste registro inicial.
+Commit publicado: `90348466674febc6fecfc145c1dfb9fad789c20a`.
+Enviado ao GitHub na branch `codex/task-card-editor-modals` e publicado na main
+com comparação da base esperada, sem force.
+
+URL: https://gabio.fabiosmo123.workers.dev.
+`/version.json` confirmou `task-card-editor-modals-2026.11.25.1`, com escopo
+`tasks-online-google-reading-card-content`. HTML, versão, manifesto, service
+worker, registro PWA e assets responderam HTTP 200. O bundle servido contém
+`task-editor-dialog`.
+
+Assets verificados: `/assets/index-DxIh0X3j.js` e
+`/assets/index-BMRIdNqZ.css`.
+
+Checks remotos aprovados no commit publicado: Workers Builds: gabio (produção),
+Supabase Preview, application e database-security. CI:
+https://github.com/Fabio-Matos1303/gabio/actions/runs/45605123863.
+O build de produção do Cloudflare foi
+`c7556443-d073-45c2-b8b2-fe89d36fd2e5`.
+
 Não foi realizado fluxo autenticado com dados pessoais em produção.
