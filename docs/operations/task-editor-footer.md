@@ -31,7 +31,22 @@ Sem mudanças de schema, autorização, dependências ou integrações.
   pacotes, 59 testes Google e build PWA. Aviso de bundle acima de 500 kB
   permanece. Não foi executado teste local de banco nesta mudança de UI.
 
-Versão preparada: `task-editor-footer-2026.11.25.1`.
-Publicação pendente neste registro inicial.
+## Produção verificada
+
+Commit publicado: `e498bd99204c2a7f50415b3edee6aae86d05c3bc`.
+Arquivos enviados na branch da entrega e main atualizada com comparação do SHA
+esperado, sem force. Versão `task-editor-footer-2026.11.25.1` confirmada em
+https://gabio.fabiosmo123.workers.dev/version.json.
+
+HTML, versão, manifesto, service worker, registro PWA, JavaScript
+`/assets/index-C14O6whs.js` e CSS `/assets/index-Dd_CnaKE.css` responderam HTTP
+200. O CSS servido contém o rodapé transparente, alinhamento à direita, largura
+automática dos botões e margem de 12 px da legenda Tags.
+
+Checks remotos aprovados: Workers Builds: gabio (produção), Supabase Preview,
+application e database-security. CI:
+https://github.com/Fabio-Matos1303/gabio/actions/runs/45607844921.
+Build Cloudflare: `cc1900c9-a28d-4044-b461-8991be6a49e1`.
+
 Os fluxos visuais usam apenas dados sintéticos. Não será realizado fluxo
 autenticado com dados pessoais em produção.
