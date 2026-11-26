@@ -40,8 +40,25 @@ permissões e modo somente leitura permanecem intactos.
 - Não houve alteração de banco, integração, dependências ou autorização.
   Testes de banco e fluxo autenticado de produção não foram executados.
 
-## Pendência de produção
+## Publicação autorizada
 
-Após autorização: atualizar versão, fazer commit/push dos arquivos da entrega,
-publicar o commit enviado e verificar versão e disponibilidade na URL de
-produção. Registrar os resultados e fazer commit/push do registro final.
+O usuário autorizou a publicação em 2026-11-26. Versão preparada:
+`clean-card-actions-2026.11.26.1`.
+
+Commit enviado à branch da entrega e à main:
+`10f5b40411d8cc2fe498dad084731053e4d4404a`.
+A árvore remota foi comparada à árvore local validada e é idêntica.
+
+`pnpm verify` completo aprovado: formatação, lint, tipos, 211 testes da aplicação
+e pacotes, 59 testes Google e build PWA. Os arquivos do checkout isolado foram
+normalizados de CRLF para LF apenas para executar a formatação; essa normalização
+não gerou alterações adicionais no conteúdo do commit.
+
+CI remoto aprovado: application e database-security, incluindo o stack completo
+do banco e seus testes SQL. Supabase Preview também aprovado.
+CI: https://github.com/Fabio-Matos1303/gabio/actions/runs/45846887809.
+
+O primeiro check Workers Builds concluído aponta para a prévia da branch.
+A verificação pública ainda retorna a versão anterior; este registro de checks
+é enviado à main para acompanhar a publicação de produção. A entrega permanece
+pendente até confirmar versão e recursos servidos na URL pública.
