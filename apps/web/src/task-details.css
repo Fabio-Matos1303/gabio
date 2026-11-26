@@ -1,5 +1,16 @@
+.task-details-dialog > .task-dialog-heading-compact {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+  z-index: 1;
+  padding: 0;
+}
+.task-details-dialog > .task-dialog-heading-compact button {
+  background: var(--glass-fallback);
+}
 .task-details-scroll {
   overflow-y: auto;
+  scroll-padding-block-start: 60px;
   overscroll-behavior: contain;
   min-height: 0;
   padding: 20px;
@@ -7,6 +18,9 @@
 .card-detail-header p {
   font-size: 0.875rem;
   color: var(--color-text-muted);
+}
+.card-detail-status {
+  margin: 0;
 }
 .card-detail-title {
   color: var(--color-text);
@@ -16,9 +30,9 @@
   text-align: left;
   background: transparent;
   border: 0;
-  padding: 8px 0;
+  padding: 0;
   overflow-wrap: anywhere;
-  width: 100%;
+  width: calc(100% - 44px);
 }
 .task-details-layout {
   display: grid;

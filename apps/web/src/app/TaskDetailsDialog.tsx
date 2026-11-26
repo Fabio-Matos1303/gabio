@@ -202,16 +202,6 @@ export function TaskDetailsDialog({
       >
         <div className="task-details-scroll">
           <div className="card-detail-header">
-            <p>
-              {task.kind === "event" ? "Evento" : "Tarefa"} ·{" "}
-              {task.status === "completed"
-                ? "Concluída · Consulta"
-                : task.status === "in_progress"
-                  ? "Em andamento"
-                  : task.status === "cancelled"
-                    ? "Cancelada · Consulta"
-                    : "A fazer"}
-            </p>
             <button
               type="button"
               className="card-detail-title"
@@ -224,6 +214,16 @@ export function TaskDetailsDialog({
             >
               {task.title}
             </button>
+            <p className="card-detail-status">
+              {task.kind === "event" ? "Evento" : "Tarefa"} ·{" "}
+              {task.status === "completed"
+                ? "Concluída · Consulta"
+                : task.status === "in_progress"
+                  ? "Em andamento"
+                  : task.status === "cancelled"
+                    ? "Cancelada · Consulta"
+                    : "A fazer"}
+            </p>
             {pending && (
               <p role="status">
                 Aguardando sincronização. As ações ficarão disponíveis após a
