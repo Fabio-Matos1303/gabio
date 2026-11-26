@@ -39,6 +39,39 @@ const tasks = ["Limpar cozinha", "Comprar materiais"].map((title, i) =>
   }),
 );
 describe("TaskViews", () => {
+  it("keeps the compact selector and view buttons synchronized and rejects unknown views", () => {
+    render(
+      <TaskViews
+        tasks={tasks}
+        renderTask={(t) => <article key={t.id}>{t.title}</article>}
+        gateway={{} as AppGateway}
+        household={house}
+        userId={userId}
+        catalog={[]}
+        onTagsChanged={async () => {}}
+      />,
+    );
+    const selector = screen.getByRole("combobox", {
+      name: "Visualização de tarefas",
+    });
+    fireEvent.change(selector, { target: { value: "week" } });
+    expect(document.querySelectorAll(".calendar-day")).toHaveLength(7);
+    expect(screen.getByRole("button", { name: "Semana" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mês" }));
+    expect(selector).toHaveValue("month");
+    expect(document.querySelectorAll(".calendar-day")).toHaveLength(42);
+    fireEvent.change(selector, { target: { value: "year" } });
+    expect(selector).toHaveValue("month");
+    fireEvent.change(selector, { target: { value: "kanban" } });
+    expect(screen.getByRole("button", { name: "Quadro" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByText("Limpar cozinha")).toBeInTheDocument();
+  });
   it("navigates seven-day weeks across years and preserves the selected day in month view", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-12-31T15:00:00Z"));
@@ -600,7 +633,9 @@ describe("TaskViews", () => {
       />,
     );
     expect(screen.queryByRole("searchbox")).toBeNull();
-    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getAllByRole("combobox")).toEqual([
+      screen.getByRole("combobox", { name: "Visualização de tarefas" }),
+    ]);
     expect(screen.queryByRole("button", { name: "Hoje" })).toBeNull();
     expect(screen.getByText("Limpar cozinha")).toBeInTheDocument();
     fireEvent.click(

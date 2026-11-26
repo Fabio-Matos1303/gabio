@@ -25,6 +25,9 @@ import { parseTagInput } from "./TaskTagFields.js";
 import "../task-views.css";
 import "../calendar-layout.css";
 import { taskPriorityLabels } from "../lib/task-priority.js";
+import { z } from "zod";
+
+const taskViewSchema = z.enum(["kanban", "week", "month"]);
 
 export function TaskViews({
   tasks,
@@ -47,7 +50,7 @@ export function TaskViews({
   catalog: TagRecord[];
   onTagsChanged: () => Promise<unknown>;
 }) {
-  const [view, setView] = useState<"kanban" | "week" | "month">("kanban");
+  const [view, setView] = useState<z.infer<typeof taskViewSchema>>("kanban");
   const [filters, setFilters] = useState<TaskFilters>(initialTaskFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -446,6 +449,23 @@ export function TaskViews({
   return (
     <div className={`task-views task-views-${view}`}>
       <div className="task-view-toolbar glass-surface">
+        <label className="task-mobile-view-selector">
+          <TaskIcon name={view === "kanban" ? "board" : "calendar"} />
+          <select
+            aria-label="Visualização de tarefas"
+            value={view}
+            onChange={(event) => {
+              const parsed = taskViewSchema.safeParse(
+                event.currentTarget.value,
+              );
+              if (parsed.success) setView(parsed.data);
+            }}
+          >
+            <option value="kanban">Quadro</option>
+            <option value="week">Semana</option>
+            <option value="month">Mês</option>
+          </select>
+        </label>
         <div
           className="task-view-switch"
           role="group"
