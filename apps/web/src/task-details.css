@@ -116,6 +116,8 @@
   gap: 8px;
 }
 .card-section-heading :is(h3, h4) {
+  min-width: 0;
+  flex: 1;
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -174,9 +176,30 @@
   background: var(--color-accent);
   color: white;
 }
+.card-section-heading .card-icon-button,
+.card-item-actions .card-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+.card-icon-button:not(:disabled):hover {
+  background: var(--color-selection);
+}
+.card-icon-button:disabled {
+  opacity: 0.5;
+}
 .card-checklist {
   padding: 16px 0;
   border-bottom: 1px solid #c9cfc1;
+}
+.card-checklist .card-section-heading {
+  flex-wrap: nowrap;
 }
 .card-checklist progress {
   display: block;

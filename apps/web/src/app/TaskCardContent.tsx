@@ -11,6 +11,7 @@ import type { AppGateway } from "../lib/app-gateway.js";
 import { GatewayError } from "../lib/app-gateway.js";
 import { TaskEditorDialog } from "./TaskEditorDialog.js";
 import { DialogCloseButton } from "./TaskCardDialog.js";
+import { TaskIcon } from "./TaskIcon.js";
 import {
   syncCardCommandQueue,
   type QueuedCardCommand,
@@ -238,6 +239,9 @@ export function TaskCardContentPanel({
               {!readOnly && (
                 <button
                   type="button"
+                  className="card-icon-button"
+                  aria-label="Editar observações"
+                  title="Editar observações"
                   disabled={disabled || dirty}
                   aria-haspopup="dialog"
                   onClick={() => {
@@ -247,7 +251,7 @@ export function TaskCardContentPanel({
                     setNotes(content.notes);
                   }}
                 >
-                  Editar observações
+                  <TaskIcon name="pencil" />
                 </button>
               )}
             </div>
@@ -344,6 +348,9 @@ export function TaskCardContentPanel({
                     <button
                       type="button"
                       aria-haspopup="dialog"
+                      className="card-icon-button"
+                      aria-label={`Editar checklist ${list.title}`}
+                      title="Editar checklist"
                       disabled={disabled || dirty}
                       onClick={() => {
                         setError("");
@@ -353,7 +360,7 @@ export function TaskCardContentPanel({
                         setEditor(structuredClone(list));
                       }}
                     >
-                      Editar checklist {list.title}
+                      <TaskIcon name="pencil" />
                     </button>
                   )}
                 </div>
@@ -541,21 +548,28 @@ function ChecklistEditor({
               <button
                 type="button"
                 aria-label={`Mover item ${index + 1} para cima`}
+                title={`Mover item ${index + 1} para cima`}
+                className="card-icon-button"
                 disabled={disabled || index === 0}
                 onClick={() => move(index, -1)}
               >
-                ↑
+                <TaskIcon name="up" />
               </button>
               <button
                 type="button"
                 aria-label={`Mover item ${index + 1} para baixo`}
+                title={`Mover item ${index + 1} para baixo`}
+                className="card-icon-button"
                 disabled={disabled || index === list.items.length - 1}
                 onClick={() => move(index, 1)}
               >
-                ↓
+                <TaskIcon name="down" />
               </button>
               <button
                 type="button"
+                className="card-icon-button"
+                aria-label={`Remover item ${index + 1}`}
+                title={`Remover item ${index + 1}`}
                 onClick={() =>
                   onChange({
                     ...list,
@@ -563,7 +577,7 @@ function ChecklistEditor({
                   })
                 }
               >
-                Remover item {index + 1}
+                <TaskIcon name="trash" />
               </button>
             </div>
           </div>
