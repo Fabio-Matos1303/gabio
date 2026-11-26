@@ -1,6 +1,6 @@
 # Conteúdo junto ao topo do cartão
 
-Status em 2026-11-26: validado; publicação em andamento sob a autorização
+Status em 2026-11-26: publicada e verificada em produção, sob a autorização
 mantida nesta conversa.
 
 Base remota: `cda8d02c9c7bedfc2a91828ba87c81b63a3341bd`.
@@ -41,5 +41,29 @@ O scroll-padding protege o foco de teclado sem criar espaço vazio no layout.
 Evidências locais: `test-results/task-card-content/compact-top.json`,
 `report.json` e capturas `*-compact-top.png`. Nenhum dado pessoal usado em QA.
 
-Versão preparada: `compact-card-top-2026.11.26.1`.
-Produção pendente de verificação após o envio do commit.
+## Produção
+
+Commit publicado: `da938ba408e9590da5f520ef01fab4df075c2958`.
+Árvore remota idêntica à árvore local validada. Atualização da main por
+comparação da base esperada e sem force. Versão:
+`compact-card-top-2026.11.26.1`.
+
+Checks remotos aprovados: application, database-security, Supabase Preview e
+Workers Builds: gabio (produção). O CI executou `pnpm verify`, checagem Deno e
+os testes SQL com o stack completo do banco.
+CI: https://github.com/Fabio-Matos1303/gabio/actions/runs/45850833116.
+Build de produção: `5188caa5-73dd-47e1-9ca1-a18fae5c73e5`.
+
+URL: https://gabio.fabiosmo123.workers.dev.
+Verificação pública em 2026-11-26 às 15:38 UTC (12:38 em America/Bahia):
+versão correta e HTTP 200 para HTML, versão, manifesto, service worker,
+registro PWA, JavaScript `/assets/index-DrURRjm4.js` e
+CSS `/assets/index-BbV_UUKg.css`.
+Os assets servidos contêm o status abaixo do título, o fechamento no canto e
+scroll-padding de 60 px para navegação por teclado.
+Evidência local: `test-results/task-card-content/production-compact-top.json`.
+Não foi realizado fluxo autenticado com dados pessoais em produção.
+
+Este registro final é enviado em commit posterior à implementação, na main e
+na branch da entrega, conforme AGENTS.md. O workspace original e suas
+alterações preexistentes permanecem preservados.
