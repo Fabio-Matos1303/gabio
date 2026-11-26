@@ -1,7 +1,7 @@
 # Ações compactas nos cartões
 
-Status em 2026-11-26: implementação validada; publicação autorizada pelo usuário
-em 2026-11-26. Verificação de produção em andamento.
+Status em 2026-11-26: publicada e verificada em produção, após autorização
+expressa do usuário.
 
 Base remota: `9b0754b`. Branch isolada: `codex/clean-card-actions`.
 O workspace original e suas alterações preexistentes foram preservados.
@@ -58,7 +58,27 @@ CI remoto aprovado: application e database-security, incluindo o stack completo
 do banco e seus testes SQL. Supabase Preview também aprovado.
 CI: https://github.com/Fabio-Matos1303/gabio/actions/runs/45846887809.
 
-O primeiro check Workers Builds concluído aponta para a prévia da branch.
-A verificação pública ainda retorna a versão anterior; este registro de checks
-é enviado à main para acompanhar a publicação de produção. A entrega permanece
-pendente até confirmar versão e recursos servidos na URL pública.
+O registro intermediário de checks foi enviado à main no commit
+`52627f7a82a383d822164bc89deb1f2b97e369a3`.
+
+## Produção verificada
+
+URL: https://gabio.fabiosmo123.workers.dev.
+Verificação pública em 2026-11-26 às 15:17 UTC (12:17 em America/Bahia):
+`/version.json` confirmou `clean-card-actions-2026.11.26.1`, com escopo
+`tasks-online-google-reading-card-content`.
+
+Responderam HTTP 200: HTML, versão, manifesto, service worker, registro PWA,
+JavaScript `/assets/index-9y8E2pRj.js` e CSS `/assets/index-CUidATq5.css`.
+Os assets servidos contêm os controles `card-icon-button`, rótulos acessíveis
+de edição e alvos de toque de 44 px. Evidência local:
+`test-results/task-card-content/production.json`.
+
+O check Workers Builds do commit inicial foi aprovado; o link do check passou
+a apontar para a prévia da branch. A disponibilidade de produção foi confirmada
+separadamente pela versão e pelos assets na URL pública acima. Não houve fluxo
+autenticado com dados pessoais em produção.
+
+Este registro final é enviado em commit posterior à implementação, na main e
+na branch da entrega, conforme AGENTS.md. O workspace original e suas alterações
+preexistentes permanecem preservados.
