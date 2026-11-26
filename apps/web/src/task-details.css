@@ -5,9 +5,6 @@
   z-index: 1;
   padding: 0;
 }
-.task-details-dialog > .task-dialog-heading-compact button {
-  background: var(--glass-fallback);
-}
 .task-details-scroll {
   overflow-y: auto;
   scroll-padding-block-start: 60px;
@@ -20,7 +17,30 @@
   color: var(--color-text-muted);
 }
 .card-detail-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
+}
+.task-dialog.task-details-dialog .card-detail-status .card-status-select {
+  width: auto;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+.card-section-heading .card-add-button,
+.card-checklist-editor .card-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 .card-detail-title {
   color: var(--color-text);

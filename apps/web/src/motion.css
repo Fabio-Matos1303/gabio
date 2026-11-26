@@ -139,6 +139,14 @@
   }
 }
 
+.task-refreshing .task-icon {
+  animation: task-refresh-spin 800ms linear infinite;
+}
+@keyframes task-refresh-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
 @media (hover: hover) and (pointer: fine) {
   .bottom-nav a:hover {
     background-color: rgba(223, 231, 216, 0.35);

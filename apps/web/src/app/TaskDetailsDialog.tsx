@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactNode, type FormEvent } from "react";
 import type { taskUpdateCommandSchema, Task } from "@gabio/contracts";
+import { taskStatusSchema } from "@gabio/contracts";
 import { DialogCloseButton, TaskCardDialog } from "./TaskCardDialog.js";
 import { TaskEditorDialog } from "./TaskEditorDialog.js";
 import { TaskKindFields } from "./TaskKindFields.js";
@@ -29,6 +30,12 @@ const editorTitles: Record<Section, string> = {
   tags: "Editar tags",
   more: "Visibilidade do cartão",
 };
+const statusLabels: Record<Task["status"], string> = {
+  open: "A fazer",
+  in_progress: "Em andamento",
+  completed: "Concluída",
+  cancelled: "Cancelada",
+};
 
 export function TaskDetailsDialog({
   task,
@@ -44,6 +51,7 @@ export function TaskDetailsDialog({
   onClose,
   onUpdate,
   onChanged,
+  onStatusChange,
 }: {
   task: Task;
   gateway: AppGateway;
@@ -58,6 +66,10 @@ export function TaskDetailsDialog({
   onClose: () => void;
   onUpdate: (changes: Changes, expectedVersion: number) => Promise<boolean>;
   onChanged: () => Promise<unknown>;
+  onStatusChange?: (
+    status: Task["status"],
+    expectedVersion: number,
+  ) => Promise<boolean>;
 }) {
   const [section, setSection] = useState<Section | null>(null);
   const [snapshot, setSnapshot] = useState(task);
@@ -68,6 +80,18 @@ export function TaskDetailsDialog({
   const [shareChanges, setShareChanges] = useState<Changes | null>(null);
   const readOnly = !["open", "in_progress"].includes(task.status);
   const disabled = busy || pending || readOnly;
+  const statusOptions: Task["status"][] = readOnly
+    ? task.recurrence === "none"
+      ? [task.status, "open"]
+      : [task.status]
+    : ["open", "in_progress", "completed"];
+  const statusDisabled =
+    busy ||
+    pending ||
+    contentPending ||
+    contentDirty ||
+    section !== null ||
+    statusOptions.length < 2;
   const setDirty = useCallback((value: boolean) => setContentDirty(value), []);
   const closeEditor = () => {
     setSection(null);
@@ -215,14 +239,37 @@ export function TaskDetailsDialog({
               {task.title}
             </button>
             <p className="card-detail-status">
-              {task.kind === "event" ? "Evento" : "Tarefa"} ·{" "}
-              {task.status === "completed"
-                ? "Concluída · Consulta"
-                : task.status === "in_progress"
-                  ? "Em andamento"
-                  : task.status === "cancelled"
-                    ? "Cancelada · Consulta"
-                    : "A fazer"}
+              <span>{task.kind === "event" ? "Evento" : "Tarefa"} ·</span>
+              {onStatusChange ? (
+                <select
+                  className="card-status-select"
+                  aria-label="Status da atividade"
+                  value={task.status}
+                  disabled={statusDisabled}
+                  onChange={(event) => {
+                    const parsed = taskStatusSchema.safeParse(
+                      event.currentTarget.value,
+                    );
+                    if (
+                      !parsed.success ||
+                      statusDisabled ||
+                      parsed.data === task.status ||
+                      !statusOptions.includes(parsed.data)
+                    )
+                      return;
+                    void onStatusChange(parsed.data, task.version);
+                  }}
+                >
+                  {statusOptions.map((status) => (
+                    <option key={status} value={status}>
+                      {statusLabels[status]}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                statusLabels[task.status]
+              )}
+              {readOnly && <span>· Consulta</span>}
             </p>
             {pending && (
               <p role="status">

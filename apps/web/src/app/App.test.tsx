@@ -140,6 +140,99 @@ async function openTaskDraft() {
 }
 
 describe("App", () => {
+  it("keeps refresh feedback in the icon and an accessible live region", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    const response = deferred<Awaited<ReturnType<AppGateway["listTasks"]>>>();
+    gateway.listTasks = vi
+      .fn()
+      .mockResolvedValueOnce([makeTask()])
+      .mockReturnValue(response.promise);
+    render(<App gateway={gateway} />);
+    const update = await screen.findByRole("button", {
+      name: "Atualizar tarefas",
+    });
+    await waitFor(() => expect(update).toBeEnabled());
+    fireEvent.click(update);
+    await waitFor(() => expect(update).toHaveAttribute("aria-busy", "true"));
+    expect(update).toHaveClass("task-refreshing");
+    expect(screen.getByText("Atualizando tarefas…")).toHaveClass("sr-only");
+    await act(async () => response.resolve([makeTask()]));
+    await waitFor(() => expect(update).not.toHaveClass("task-refreshing"));
+    expect(update).toHaveAttribute("aria-busy", "false");
+  });
+  it("uses the existing completion guard and versioned command from inside the card", async () => {
+    window.history.replaceState({}, "", "/#tarefas");
+    const gateway = gatewayWith();
+    let currentTask = makeTask({ version: 3 });
+    gateway.listTasks = vi.fn().mockImplementation(async () => [currentTask]);
+    gateway.readTaskCard = vi.fn().mockResolvedValue({
+      taskId: currentTask.id,
+      notes: "Conteúdo sintético",
+      notesVersion: 1,
+      checklists: [
+        {
+          id: "71000000-0000-4000-8000-000000000001",
+          title: "Preparação",
+          version: 1,
+          items: [
+            {
+              id: "72000000-0000-4000-8000-000000000001",
+              text: "Item pendente",
+              completed: false,
+            },
+          ],
+        },
+      ],
+    });
+    gateway.executeTaskCardCommand = vi.fn();
+    gateway.executeTaskCommand = vi.fn().mockImplementation(async (command) => {
+      currentTask = makeTask({
+        status: command.payload.status,
+        version: 4,
+        completedAt: "2026-11-26T15:00:00Z",
+      });
+      return {
+        commandId: command.commandId,
+        replayed: false,
+        task: currentTask,
+      };
+    });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      render(<App gateway={gateway} />);
+      fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+      await screen.findByText("Conteúdo sintético");
+      const status = screen.getByRole("combobox", {
+        name: "Status da atividade",
+      });
+      fireEvent.change(status, { target: { value: "completed" } });
+      await waitFor(() => expect(confirm).toHaveBeenCalled());
+      expect(gateway.executeTaskCommand).not.toHaveBeenCalled();
+      await waitFor(() => expect(status).toBeEnabled());
+      confirm.mockReturnValue(true);
+      fireEvent.change(status, { target: { value: "completed" } });
+      await waitFor(() =>
+        expect(gateway.executeTaskCommand).toHaveBeenCalledTimes(1),
+      );
+      expect(gateway.executeTaskCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "set_status",
+          payload: {
+            taskId: currentTask.id,
+            expectedVersion: 3,
+            status: "completed",
+          },
+        }),
+      );
+      await waitFor(() => expect(status).toHaveValue("completed"));
+      expect(
+        screen.getByRole("button", { name: "Editar título" }),
+      ).toBeDisabled();
+    } finally {
+      confirm.mockRestore();
+    }
+  });
   it("keeps pending card changes reachable and blocks completion until synchronization", async () => {
     window.history.replaceState({}, "", "/#tarefas");
     const gateway = gatewayWith();

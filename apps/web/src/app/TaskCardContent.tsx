@@ -311,6 +311,8 @@ export function TaskCardContentPanel({
               {!readOnly && (
                 <button
                   type="button"
+                  className="card-add-button"
+                  aria-label="Adicionar checklist"
                   aria-haspopup="dialog"
                   disabled={
                     disabled || dirty || content.checklists.length >= 20
@@ -329,7 +331,7 @@ export function TaskCardContentPanel({
                     setEditor(draft);
                   }}
                 >
-                  Adicionar checklist
+                  <TaskIcon name="plus" /> Checklist
                 </button>
               )}
             </div>
@@ -584,6 +586,8 @@ function ChecklistEditor({
         ))}
         <button
           type="button"
+          className="card-add-button"
+          aria-label="Adicionar item"
           disabled={disabled || list.items.length >= 100}
           onClick={() =>
             onChange({
@@ -595,7 +599,7 @@ function ChecklistEditor({
             })
           }
         >
-          Adicionar item
+          <TaskIcon name="plus" /> Item
         </button>
         {onDelete && (
           <button type="button" onClick={onDelete}>

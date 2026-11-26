@@ -68,6 +68,90 @@ function setup() {
   return { props, read, execute };
 }
 describe("task details", () => {
+  it("changes status with the current version and rejects unsupported choices", async () => {
+    const { props } = setup();
+    const change = vi.fn().mockResolvedValue(true);
+    render(<TaskDetailsDialog {...props} onStatusChange={change} />);
+    await screen.findByText("Texto inicial");
+    const status = screen.getByRole("combobox", {
+      name: "Status da atividade",
+    });
+    expect(
+      within(status)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["A fazer", "Em andamento", "Concluída"]);
+    fireEvent.change(status, { target: { value: "cancelled" } });
+    expect(change).not.toHaveBeenCalled();
+    fireEvent.change(status, { target: { value: "in_progress" } });
+    expect(change).toHaveBeenCalledWith("in_progress", task.version);
+    expect(props.onUpdate).not.toHaveBeenCalled();
+  });
+  it.each(["busy", "pending", "contentPending"] as const)(
+    "blocks status changes while %s",
+    async (field) => {
+      const { props } = setup();
+      const change = vi.fn().mockResolvedValue(true);
+      render(
+        <TaskDetailsDialog
+          {...props}
+          {...{ [field]: true }}
+          onStatusChange={change}
+        />,
+      );
+      const status = screen.getByRole("combobox", {
+        name: "Status da atividade",
+      });
+      expect(status).toBeDisabled();
+      fireEvent.change(status, { target: { value: "completed" } });
+      expect(change).not.toHaveBeenCalled();
+    },
+  );
+  it("blocks status while editing and only reopens nonrecurring completed tasks to open", async () => {
+    const { props } = setup();
+    const change = vi.fn().mockResolvedValue(true);
+    const view = render(
+      <TaskDetailsDialog {...props} onStatusChange={change} />,
+    );
+    await screen.findByText("Texto inicial");
+    const status = screen.getByRole("combobox", {
+      name: "Status da atividade",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Editar título" }));
+    expect(status).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    const completed = {
+      ...task,
+      status: "completed" as const,
+      completedAt: "2026-11-26T15:00:00Z",
+    };
+    view.rerender(
+      <TaskDetailsDialog {...props} task={completed} onStatusChange={change} />,
+    );
+    expect(
+      within(status).queryByRole("option", { name: "Em andamento" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(status, { target: { value: "open" } });
+    expect(change).toHaveBeenCalledWith("open", task.version);
+    change.mockClear();
+    view.rerender(
+      <TaskDetailsDialog
+        {...props}
+        task={{
+          ...completed,
+          recurrence: "daily",
+          dueAt: "2026-11-26T15:00:00Z",
+        }}
+        onStatusChange={change}
+      />,
+    );
+    expect(status).toBeDisabled();
+    expect(
+      within(status).queryByRole("option", { name: "A fazer" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(status, { target: { value: "open" } });
+    expect(change).not.toHaveBeenCalled();
+  });
   it("includes the empty tag action text in its accessible name", async () => {
     const { props } = setup();
     render(<TaskDetailsDialog {...props} />);

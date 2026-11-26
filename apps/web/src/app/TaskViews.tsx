@@ -441,13 +441,13 @@ export function TaskViews({
         >
           <button
             type="button"
-            aria-label="Kanban"
-            title="Kanban"
+            aria-label="Quadro"
+            title="Quadro"
             aria-pressed={view === "kanban"}
             onClick={() => setView("kanban")}
           >
             <TaskIcon name="board" />
-            <span className="task-view-name">Kanban</span>
+            <span className="task-view-name">Quadro</span>
           </button>
           {(["week", "month"] as const).map((mode) => (
             <button

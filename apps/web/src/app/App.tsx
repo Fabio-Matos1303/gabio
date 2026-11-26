@@ -651,7 +651,10 @@ function TaskPanel({
     }
   }
 
-  async function run(command: TaskGatewayCommand) {
+  async function run(
+    command: TaskGatewayCommand,
+    { showSuccess = true }: { showSuccess?: boolean } = {},
+  ) {
     if (commandInFlight.current) return false;
     commandInFlight.current = true;
     setSendingTask(true);
@@ -735,12 +738,16 @@ function TaskPanel({
 
       const refreshed = await refresh();
       if (liveContextKey.current !== contextKey) return false;
-      setNotice({
-        kind: refreshed ? "success" : "error",
-        text: refreshed
-          ? "Tarefa atualizada."
-          : "Alteração confirmada. Não foi possível atualizar a lista; toque em Atualizar tarefas.",
-      });
+      setNotice(
+        refreshed && !showSuccess
+          ? null
+          : {
+              kind: refreshed ? "success" : "error",
+              text: refreshed
+                ? "Tarefa atualizada."
+                : "Alteração confirmada. Não foi possível atualizar a lista; toque em Atualizar tarefas.",
+            },
+      );
       return true;
     } catch {
       setNotice({
@@ -1108,8 +1115,9 @@ function TaskPanel({
         </div>
         <button
           type="button"
-          className="task-icon-button"
+          className={`task-icon-button${loadingTasks ? " task-refreshing" : ""}`}
           aria-label="Atualizar tarefas"
+          aria-busy={loadingTasks}
           title="Atualizar tarefas"
           disabled={loadingTasks || sendingTask}
           onClick={() => void updateTasks()}
@@ -1131,7 +1139,9 @@ function TaskPanel({
           Nova
         </button>
       </div>
-      {loadingTasks && <p role="status">Atualizando tarefas…</p>}
+      <span className="sr-only" role="status">
+        {loadingTasks ? "Atualizando tarefas…" : ""}
+      </span>
       <NoticeBox notice={creationOpen || editingTask ? null : notice} />
       {editingTask && (
         <TaskDetailsDialog
@@ -1153,6 +1163,16 @@ function TaskPanel({
           feedback={<NoticeBox notice={notice} />}
           onClose={() => setEditingTask(null)}
           onUpdate={saveTaskChanges}
+          onStatusChange={(status, expectedVersion) =>
+            run(
+              {
+                commandId: crypto.randomUUID(),
+                type: "set_status",
+                payload: { taskId: editingTask.id, expectedVersion, status },
+              },
+              { showSuccess: false },
+            )
+          }
           onChanged={refresh}
         />
       )}{" "}

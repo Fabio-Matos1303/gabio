@@ -454,7 +454,7 @@ describe("TaskViews", () => {
     expect(within(calendar).getAllByRole("button").length).toBe(45);
     fireEvent.click(screen.getByText("Sem data ou prazo (1)"));
     expect(within(calendar).getByText("Limpar cozinha")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quadro" }));
     expect(screen.queryByText("Comprar materiais")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^Filtros/ }));
     fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
