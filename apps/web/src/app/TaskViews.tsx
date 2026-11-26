@@ -431,6 +431,18 @@ export function TaskViews({
       </article>
     );
   }
+  const resultSummary = [
+    view !== "kanban"
+      ? `${visibleItems.filter((i) => i.status === "event").length} compromisso(s) na grade`
+      : "",
+    activeFilterCount ? "Filtros ativos" : "",
+    reading &&
+    (reading.tasksState === "partial" || reading.calendarState === "partial")
+      ? "Contagem parcial"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <div className={`task-views task-views-${view}`}>
       <div className="task-view-toolbar glass-surface">
@@ -877,24 +889,12 @@ export function TaskViews({
             <DialogCloseButton>Concluído</DialogCloseButton>
           </div>
         </TaskCardDialog>
-        <div className="task-results">
+        <div className={resultSummary ? "task-results" : "sr-only"}>
           <span role="status">
             {loading && (
               <span className="sr-only">Atualizando itens do Google. </span>
             )}
-            {[
-              view !== "kanban"
-                ? `${visibleItems.filter((i) => i.status === "event").length} compromisso(s) na grade`
-                : "",
-              activeFilterCount ? "Filtros ativos" : "",
-              reading &&
-              (reading.tasksState === "partial" ||
-                reading.calendarState === "partial")
-                ? "Contagem parcial"
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+            {resultSummary}
           </span>
         </div>
       </div>

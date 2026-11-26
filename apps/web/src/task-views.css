@@ -877,7 +877,8 @@
 }
 .task-views .task-toolbar-actions {
   flex-wrap: nowrap;
-  justify-self: center;
+  justify-self: end;
+  align-self: center;
   gap: 2px;
 }
 .task-views .task-toolbar-actions .task-icon-button {
@@ -1035,13 +1036,12 @@
 }
 .task-views .task-view-toolbar {
   grid-template-columns: minmax(0, 1fr);
-  justify-content: center;
-  justify-items: center;
   column-gap: 12px;
 }
 .task-views .task-view-switch {
   flex-wrap: nowrap;
-  justify-self: center;
+  justify-self: start;
+  align-self: center;
 }
 .task-views .task-view-switch button {
   width: auto;
@@ -1079,7 +1079,7 @@
 }
 @media (min-width: 768px) {
   .task-views .task-view-toolbar {
-    grid-template-columns: auto auto;
+    grid-template-columns: auto minmax(0, 1fr);
   }
   .task-week-calendar .task-day-titles {
     padding: 4px 6px 12px;
