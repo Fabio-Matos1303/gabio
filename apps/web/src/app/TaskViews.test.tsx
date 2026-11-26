@@ -39,6 +39,73 @@ const tasks = ["Limpar cozinha", "Comprar materiais"].map((title, i) =>
   }),
 );
 describe("TaskViews", () => {
+  it("navigates seven-day weeks across years and preserves the selected day in month view", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-12-31T15:00:00Z"));
+    const onOpenTask = vi.fn();
+    try {
+      render(
+        <TaskViews
+          tasks={Array.from({ length: 3 }, (_, i) => ({
+            ...tasks[0]!,
+            id: `30000000-0000-4000-8000-00000000000${i + 1}`,
+            title: `Atividade fictícia ${i + 1}`,
+            dueAt: "2026-12-31T12:00:00Z",
+          }))}
+          renderTask={(t) => <article key={t.id}>{t.title}</article>}
+          gateway={{} as AppGateway}
+          household={house}
+          userId={userId}
+          catalog={[]}
+          onTagsChanged={async () => {}}
+          onOpenTask={onOpenTask}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Semana" }));
+      expect(document.querySelectorAll(".calendar-day")).toHaveLength(7);
+      expect(document.querySelectorAll(".calendar-event")).toHaveLength(3);
+      expect(
+        screen.getByRole("button", {
+          name: /segunda-feira, 28 de dezembro de 2026/,
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /domingo, 3 de janeiro de 2027/ }),
+      ).toBeInTheDocument();
+      fireEvent.click(
+        document.querySelector<HTMLButtonElement>(".calendar-event")!,
+      );
+      expect(onOpenTask).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Atividade fictícia 1" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Próxima semana" }));
+      expect(
+        screen.getByRole("button", {
+          name: /segunda-feira, 4 de janeiro de 2027/,
+        }),
+      ).toBeInTheDocument();
+      expect(document.querySelectorAll(".calendar-event")).toHaveLength(0);
+      fireEvent.click(screen.getByRole("button", { name: "Semana anterior" }));
+      expect(document.querySelectorAll(".calendar-event")).toHaveLength(3);
+      fireEvent.click(screen.getByRole("button", { name: "Mês" }));
+      expect(document.querySelectorAll(".calendar-day")).toHaveLength(42);
+      expect(
+        screen.getByRole("button", {
+          name: /quinta-feira, 31 de dezembro de 2026/,
+        }),
+      ).toHaveAttribute("aria-pressed", "true");
+      fireEvent.click(screen.getByRole("button", { name: "Próximo mês" }));
+      fireEvent.click(screen.getByRole("button", { name: "Hoje" }));
+      expect(
+        screen.getByRole("button", {
+          name: /quinta-feira, 31 de dezembro de 2026/,
+        }),
+      ).toHaveAttribute("aria-pressed", "true");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("automatically retries a rate-limited continuation using the same cursor", async () => {
     vi.useFakeTimers();
     const page = {
@@ -375,7 +442,7 @@ describe("TaskViews", () => {
     });
     expect(screen.queryByText("Comprar materiais")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Mostrar resultados" }));
-    fireEvent.click(screen.getByRole("button", { name: "Calendário" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mês" }));
     fireEvent.click(
       screen.getByRole("button", { name: "Buscar tarefas e eventos" }),
     );
@@ -472,7 +539,7 @@ describe("TaskViews", () => {
         canOpenTask={() => false}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Calendário" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mês" }));
     const preview =
       document.querySelector<HTMLButtonElement>(".calendar-event");
     expect(preview).not.toBeNull();

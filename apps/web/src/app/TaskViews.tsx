@@ -46,7 +46,7 @@ export function TaskViews({
   catalog: TagRecord[];
   onTagsChanged: () => Promise<unknown>;
 }) {
-  const [view, setView] = useState<"kanban" | "calendar">("kanban");
+  const [view, setView] = useState<"kanban" | "week" | "month">("kanban");
   const [filters, setFilters] = useState<TaskFilters>(initialTaskFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -82,7 +82,7 @@ export function TaskViews({
   const calendarRef = useRef<HTMLDivElement>(null);
   const dayRef = useRef<HTMLElement>(null);
   useContentMotion(contentRef, view);
-  useContentMotion(calendarRef, month, "horizontal");
+  useContentMotion(calendarRef, view === "week" ? day : month, "horizontal");
   useContentMotion(dayRef, day);
   const [externalEditor, setExternalEditor] = useState<
     (ViewItem & { generation: string }) | null
@@ -226,7 +226,16 @@ export function TaskViews({
   ).sort((a, b) => a.localeCompare(b, "pt-BR"));
   const first = new Date(`${month}-01T12:00:00Z`);
   const offset = (first.getUTCDay() + 6) % 7;
-  const cells = Array.from({ length: 42 }, (_, index) => {
+  const weekStart = new Date(`${day}T12:00:00Z`);
+  weekStart.setUTCDate(
+    weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7),
+  );
+  const cells = Array.from({ length: view === "week" ? 7 : 42 }, (_, index) => {
+    if (view === "week") {
+      const date = new Date(weekStart);
+      date.setUTCDate(date.getUTCDate() + index);
+      return date.toISOString().slice(0, 10);
+    }
     const date = new Date(first);
     date.setUTCDate(1 - offset + index);
     return date.toISOString().slice(0, 10);
@@ -236,7 +245,15 @@ export function TaskViews({
       ...options,
       timeZone: "America/Bahia",
     }).format(new Date(`${value}T12:00:00-03:00`));
-  const moveMonth = (step: number) => {
+  const movePeriod = (step: number) => {
+    if (view === "week") {
+      const date = new Date(`${day}T12:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + step * 7);
+      const next = date.toISOString().slice(0, 10);
+      setDay(next);
+      setMonth(next.slice(0, 7));
+      return;
+    }
     const date = new Date(first);
     date.setUTCMonth(date.getUTCMonth() + step);
     const next = date.toISOString().slice(0, 7);
@@ -414,7 +431,7 @@ export function TaskViews({
     );
   }
   return (
-    <div className="task-views">
+    <div className={`task-views task-views-${view}`}>
       <div className="task-view-toolbar glass-surface">
         <div
           className="task-view-switch"
@@ -431,16 +448,21 @@ export function TaskViews({
             <TaskIcon name="board" />
             <span className="task-view-name">Kanban</span>
           </button>
-          <button
-            type="button"
-            aria-label="Calendário"
-            title="Calendário"
-            aria-pressed={view === "calendar"}
-            onClick={() => setView("calendar")}
-          >
-            <TaskIcon name="calendar" />
-            <span className="task-view-name">Calendário</span>
-          </button>
+          {(["week", "month"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              aria-label={mode === "week" ? "Semana" : "Mês"}
+              title={mode === "week" ? "Semana" : "Mês"}
+              aria-pressed={view === mode}
+              onClick={() => setView(mode)}
+            >
+              <TaskIcon name="calendar" />
+              <span className="task-view-name">
+                {mode === "week" ? "Semana" : "Mês"}
+              </span>
+            </button>
+          ))}
         </div>
         <div
           className="task-toolbar-actions"
@@ -860,7 +882,7 @@ export function TaskViews({
               <span className="sr-only">Atualizando itens do Google. </span>
             )}
             {[
-              view === "calendar"
+              view !== "kanban"
                 ? `${visibleItems.filter((i) => i.status === "event").length} compromisso(s) na grade`
                 : "",
               activeFilterCount ? "Filtros ativos" : "",
@@ -1150,18 +1172,25 @@ export function TaskViews({
           </div>
         ) : (
           <section
-            className="task-calendar glass-surface"
+            className={`task-calendar glass-surface${view === "week" ? " task-week-calendar" : ""}`}
             aria-label="Calendário de tarefas"
           >
             <header className="calendar-toolbar">
               <h3>
-                {labelDate(month + "-01", { month: "long", year: "numeric" })}
+                {view === "week"
+                  ? `${labelDate(cells[0]!, { day: "numeric", month: "short" })} – ${labelDate(cells[6]!, { day: "numeric", month: "short", year: "numeric" })}`
+                  : labelDate(month + "-01", {
+                      month: "long",
+                      year: "numeric",
+                    })}
               </h3>
               <div className="calendar-navigation">
                 <button
                   type="button"
-                  aria-label="Mês anterior"
-                  onClick={() => moveMonth(-1)}
+                  aria-label={
+                    view === "week" ? "Semana anterior" : "Mês anterior"
+                  }
+                  onClick={() => movePeriod(-1)}
                 >
                   ←
                 </button>
@@ -1177,8 +1206,10 @@ export function TaskViews({
                 </button>
                 <button
                   type="button"
-                  aria-label="Próximo mês"
-                  onClick={() => moveMonth(1)}
+                  aria-label={
+                    view === "week" ? "Próxima semana" : "Próximo mês"
+                  }
+                  onClick={() => movePeriod(1)}
                 >
                   →
                 </button>
@@ -1204,7 +1235,7 @@ export function TaskViews({
                     const items = selected.filter((i) => itemOnDay(i, date));
                     return (
                       <div
-                        className={`calendar-day${date.slice(0, 7) !== month ? " outside" : ""}${date === day ? " selected" : ""}`}
+                        className={`calendar-day${view === "month" && date.slice(0, 7) !== month ? " outside" : ""}${date === day ? " selected" : ""}`}
                         key={date}
                       >
                         <button
@@ -1233,50 +1264,54 @@ export function TaskViews({
                           </span>
                         </button>
                         <div className="task-day-titles">
-                          {items.slice(0, 2).map((item) => (
-                            <button
-                              type="button"
-                              key={item.id}
-                              className={`calendar-event ${item.source}`}
-                              disabled={
-                                !!item.task &&
-                                canOpenTask?.(item.task) === false
-                              }
-                              onClick={() => {
-                                if (item.task && onOpenTask)
-                                  onOpenTask(item.task);
-                                else if (item.external && reading?.generation)
-                                  setExternalCard({
-                                    ...item,
-                                    generation: reading.generation,
-                                  });
-                                else setDay(date);
-                              }}
-                              title={item.title}
-                            >
-                              <span
-                                aria-hidden="true"
-                                className="calendar-event-mark"
+                          {(view === "week" ? items : items.slice(0, 2)).map(
+                            (item) => (
+                              <button
+                                type="button"
+                                key={item.id}
+                                className={`calendar-event ${item.source}`}
+                                disabled={
+                                  !!item.task &&
+                                  canOpenTask?.(item.task) === false
+                                }
+                                onClick={() => {
+                                  if (item.task && onOpenTask)
+                                    onOpenTask(item.task);
+                                  else if (item.external && reading?.generation)
+                                    setExternalCard({
+                                      ...item,
+                                      generation: reading.generation,
+                                    });
+                                  else setDay(date);
+                                }}
+                                title={item.title}
                               >
-                                {item.status === "event"
-                                  ? "▪"
-                                  : item.status === "completed"
-                                    ? "✓"
-                                    : "○"}
-                              </span>
-                              {item.startsAt && (
-                                <time>
-                                  {new Intl.DateTimeFormat("pt-BR", {
-                                    timeZone: "America/Bahia",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  }).format(new Date(item.startsAt))}{" "}
-                                </time>
-                              )}
-                              {item.title}
-                            </button>
-                          ))}
-                          {items.length > 2 && (
+                                <span
+                                  aria-hidden="true"
+                                  className="calendar-event-mark"
+                                >
+                                  {item.status === "event"
+                                    ? "▪"
+                                    : item.status === "completed"
+                                      ? "✓"
+                                      : "○"}
+                                </span>
+                                {item.startsAt && (
+                                  <time>
+                                    {new Intl.DateTimeFormat("pt-BR", {
+                                      timeZone: "America/Bahia",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    }).format(new Date(item.startsAt))}{" "}
+                                  </time>
+                                )}
+                                <span className="calendar-event-title">
+                                  {item.title}
+                                </span>
+                              </button>
+                            ),
+                          )}
+                          {view === "month" && items.length > 2 && (
                             <button
                               type="button"
                               className="calendar-more"

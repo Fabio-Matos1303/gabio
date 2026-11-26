@@ -1017,3 +1017,101 @@
   scrollbar-gutter: stable;
   padding: 3px;
 }
+/* Calendar periods grow with the page; only the Kanban keeps bounded columns. */
+.tasks-section:has(.task-views-week),
+.tasks-section:has(.task-views-month) {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+.tasks-section .task-views-week .task-view-content,
+.tasks-section .task-views-month .task-view-content {
+  flex: none;
+  overflow: visible;
+}
+.task-calendar .task-day-list {
+  max-height: none;
+  overflow: visible;
+}
+.task-views .task-view-toolbar {
+  grid-template-columns: minmax(0, 1fr);
+}
+.task-views .task-view-switch {
+  flex-wrap: nowrap;
+}
+.task-views .task-view-switch button {
+  width: auto;
+  padding-inline: 10px;
+}
+.task-view-name {
+  display: inline;
+}
+.task-week-calendar .task-day-titles {
+  display: grid;
+  gap: 4px;
+  padding: 4px 0 8px;
+}
+.task-views .task-week-calendar .calendar-day-select {
+  min-height: 44px;
+}
+.task-views .task-week-calendar .calendar-event {
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 4px;
+  background: #dfe7d8;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.task-views .task-week-calendar .calendar-event.google_tasks {
+  background: #e8e8dd;
+}
+.task-views .task-week-calendar .calendar-event.google_calendar {
+  background: #f0dfd3;
+}
+@media (min-width: 768px) {
+  .task-views .task-view-toolbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .task-week-calendar .task-day-titles {
+    padding: 4px 6px 12px;
+  }
+}
+@media (min-width: 1100px) {
+  .task-week-calendar .task-calendar-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .task-week-calendar .task-day-list {
+    border-left: 0;
+    padding-top: 16px;
+  }
+}
+.task-week-calendar .calendar-event time {
+  display: block;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.task-week-calendar .calendar-event-mark {
+  display: block;
+}
+.task-week-calendar .calendar-event-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+@media (min-width: 768px) {
+  .task-week-calendar .calendar-event time,
+  .task-week-calendar .calendar-event-mark,
+  .task-week-calendar .calendar-event-title {
+    display: inline;
+  }
+}
+.task-calendar .task-card-meta span,
+.task-calendar .task-card-meta time:not(.overdue) {
+  color: var(--color-text-muted, #526158);
+}
