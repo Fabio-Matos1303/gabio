@@ -23,6 +23,7 @@ import {
 } from "../lib/task-views.js";
 import { parseTagInput } from "./TaskTagFields.js";
 import "../task-views.css";
+import "../calendar-layout.css";
 import { taskPriorityLabels } from "../lib/task-priority.js";
 
 export function TaskViews({
@@ -1219,7 +1220,6 @@ export function TaskViews({
               <span>○ Tarefa</span>
               <span>✓ Concluída</span>
               <span>▪ Compromisso</span>
-              <span>Horário de Brasília</span>
             </div>
             <div className="task-calendar-layout">
               <div>
@@ -1254,6 +1254,17 @@ export function TaskViews({
                               setMonth(date.slice(0, 7));
                           }}
                         >
+                          {view === "week" && (
+                            <span
+                              className="calendar-day-weekday"
+                              aria-hidden="true"
+                            >
+                              {labelDate(date, { weekday: "short" }).replace(
+                                ".",
+                                "",
+                              )}
+                            </span>
+                          )}
                           <span className="calendar-date-number">
                             {Number(date.slice(-2))}
                           </span>
