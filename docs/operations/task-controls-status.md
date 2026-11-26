@@ -1,6 +1,6 @@
 # Controles essenciais e status no cartão
 
-Status em 2026-11-26: validado; publicação em andamento sob a autorização
+Status em 2026-11-26: publicada e verificada em produção, sob a autorização
 mantida nesta conversa.
 
 Base remota: `1c2ad60d91c9ea6c954cb2addf10a0670738a731`.
@@ -61,5 +61,29 @@ Evidências locais: `test-results/task-card-content/minimal-controls.json`,
 As capturas de status posteriores à correção de cascata CSS mostram o seletor
 compacto, sem herdar largura e fundo dos campos de formulário.
 
-Versão preparada: `task-controls-status-2026.11.26.1`.
-Produção pendente de confirmação após o envio do commit.
+## Produção
+
+Commit publicado: `d9d6bea66d41d47c59c3a825d73b893216412719`.
+Árvore remota idêntica à árvore local validada. Atualização da main por
+comparação da base esperada e sem force. Versão:
+`task-controls-status-2026.11.26.1`.
+
+Checks remotos aprovados: application, database-security, Supabase Preview e
+Workers Builds: gabio (produção). O CI executou `pnpm verify`, checagem Deno e
+os testes SQL com o stack completo do banco.
+CI: https://github.com/Fabio-Matos1303/gabio/actions/runs/45872315415.
+Build de produção: `ca30fbf9-7d77-42a3-9a92-ebe879c7f4e4`.
+
+URL: https://gabio.fabiosmo123.workers.dev.
+Verificação pública em 2026-11-26 às 18:01 UTC (15:01 em America/Bahia):
+versão correta e HTTP 200 para HTML, versão, manifesto, service worker,
+registro PWA, JavaScript `/assets/index-D-r0lyUB.js` e
+CSS `/assets/index-CfChSbty.css`.
+Os assets servidos contêm o seletor de status, o rótulo Quadro, a rotação de
+atualização e os controles de 44 px.
+Evidência local: `test-results/task-card-content/production-task-controls-status.json`.
+Não foi realizado fluxo autenticado com dados pessoais em produção.
+
+Este registro final é enviado em commit posterior à implementação, na main e
+na branch da entrega, conforme AGENTS.md. O workspace original e suas
+alterações preexistentes permanecem preservados.
