@@ -20,6 +20,7 @@ export function DialogCloseButton(
 export function TaskCardDialog({
   open,
   title,
+  hideTitle = false,
   onClose,
   busy = false,
   children,
@@ -28,6 +29,7 @@ export function TaskCardDialog({
 }: {
   open: boolean;
   title: string;
+  hideTitle?: boolean;
   onClose: () => void;
   busy?: boolean;
   children: ReactNode;
@@ -79,8 +81,12 @@ export function TaskCardDialog({
         requestClose();
       }}
     >
-      <header className="task-dialog-heading">
-        <h2 id={id}>{title}</h2>
+      <header
+        className={`task-dialog-heading${hideTitle ? " task-dialog-heading-compact" : ""}`}
+      >
+        <h2 id={id} className={hideTitle ? "sr-only" : undefined}>
+          {title}
+        </h2>
         <button
           type="button"
           aria-label={`Fechar ${title.toLocaleLowerCase("pt-BR")}`}

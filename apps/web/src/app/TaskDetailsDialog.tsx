@@ -187,6 +187,7 @@ export function TaskDetailsDialog({
     <>
       <TaskCardDialog
         open
+        hideTitle
         title={
           readOnly
             ? "Cartão da tarefa"

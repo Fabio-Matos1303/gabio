@@ -96,6 +96,11 @@
   font-size: 1.25rem;
   font-weight: 650;
 }
+.task-dialog-heading-compact {
+  justify-content: flex-end;
+  padding-block: 4px;
+  border-bottom: 0;
+}
 .task-dialog-heading button {
   flex-shrink: 0;
   width: 44px;
